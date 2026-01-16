@@ -20,38 +20,38 @@ const ControlPanel = ({
       boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
     }}
   >
-    <div className="flex flex-wrap gap-4 items-start">
+    <div className="flex flex-wrap gap-6 items-start">
       {/* Info */}
-      <div className="min-w-[140px]">
+      <div className="min-w-[160px] shrink-0">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Effect</label>
         <p className="text-sm font-medium text-neutral-800">{PRESET_INFO.voronoi.name}</p>
         <p className="text-[9px] text-neutral-400 mt-1">{PRESET_INFO.voronoi.description}</p>
       </div>
 
       {/* Hover Controls */}
-      <div className="min-w-[140px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
-        <div className="space-y-1">
+      <div className="min-w-[160px] flex-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-2">Hover</label>
+        <div className="space-y-2">
           <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControl('hoverStrength', v)} min={0} max={3} />
           <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControl('hoverRadius', v)} min={0.1} max={1} />
         </div>
       </div>
 
       {/* Physics Controls */}
-      <div className="min-w-[140px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Physics</label>
-        <div className="space-y-1">
+      <div className="min-w-[160px] flex-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-2">Physics</label>
+        <div className="space-y-2">
           <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControl('spring', v)} min={0.1} max={2} />
           <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControl('damping', v)} min={0.1} max={2} />
         </div>
       </div>
 
       {/* Shatter controls */}
-      <div className="min-w-[140px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">
+      <div className="min-w-[160px] flex-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-2">
           Shatter
         </label>
-        <div className="space-y-1">
+        <div className="space-y-2">
           <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControl('shardSpread', v)} min={0.1} max={3} />
           <ControlSlider label="Force" value={controls.explosionForce} onChange={(v) => updateControl('explosionForce', v)} min={0.3} max={3} />
           <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControl('explosionSpin', v)} min={0} max={3} />
@@ -59,27 +59,27 @@ const ControlPanel = ({
       </div>
 
       {/* Settle controls */}
-      <div className="min-w-[140px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">
+      <div className="min-w-[160px] flex-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-2">
           Settle
         </label>
-        <div className="space-y-1">
+        <div className="space-y-2">
           <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControl('returnSpring', v)} min={0.5} max={5} />
           <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControl('settleDamping', v)} min={0} max={2} />
         </div>
       </div>
 
       {/* Action buttons */}
-      <div className="flex flex-col gap-1.5 min-w-[70px]">
+      <div className="flex flex-col gap-2 min-w-[80px] shrink-0 ml-auto">
         <button
           onClick={onReset}
-          className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
+          className="px-4 py-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
         >
           Reset
         </button>
         <button
           onClick={() => setIsPaused(!isPaused)}
-          className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
+          className="px-4 py-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
         >
           {isPaused ? 'Play' : 'Pause'}
         </button>
