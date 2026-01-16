@@ -140,6 +140,56 @@ const noise2D = (x: number, y: number, seed: number = 0) => {
   return (n + m) / 2 - 0.5;
 };
 
+// Constrain transform to keep shape within viewBox boundaries
+// Returns adjusted x, y offsets that respect container bounds
+const constrainToBounds = (
+  shape: { bounds: { x: number; y: number; width: number; height: number } },
+  offsetX: number,
+  offsetY: number,
+  scale: number,
+  viewBox: { x: number; y: number; width: number; height: number },
+  padding: number = 0
+): { x: number; y: number } => {
+  const bounds = shape.bounds;
+  const scaledWidth = bounds.width * scale;
+  const scaledHeight = bounds.height * scale;
+  
+  // Calculate where the shape would be after transform
+  const newLeft = bounds.x + offsetX + (bounds.width - scaledWidth) / 2;
+  const newRight = newLeft + scaledWidth;
+  const newTop = bounds.y + offsetY + (bounds.height - scaledHeight) / 2;
+  const newBottom = newTop + scaledHeight;
+  
+  // Container bounds
+  const containerLeft = viewBox.x + padding;
+  const containerRight = viewBox.x + viewBox.width - padding;
+  const containerTop = viewBox.y + padding;
+  const containerBottom = viewBox.y + viewBox.height - padding;
+  
+  let constrainedX = offsetX;
+  let constrainedY = offsetY;
+  
+  // Constrain horizontally with bounce-back effect
+  if (newLeft < containerLeft) {
+    const overshoot = containerLeft - newLeft;
+    constrainedX = offsetX + overshoot + overshoot * 0.2; // Slight bounce
+  } else if (newRight > containerRight) {
+    const overshoot = newRight - containerRight;
+    constrainedX = offsetX - overshoot - overshoot * 0.2;
+  }
+  
+  // Constrain vertically with bounce-back effect
+  if (newTop < containerTop) {
+    const overshoot = containerTop - newTop;
+    constrainedY = offsetY + overshoot + overshoot * 0.2;
+  } else if (newBottom > containerBottom) {
+    const overshoot = newBottom - containerBottom;
+    constrainedY = offsetY - overshoot - overshoot * 0.2;
+  }
+  
+  return { x: constrainedX, y: constrainedY };
+};
+
 // ============================================================================
 // SVG PARSER
 // ============================================================================
@@ -341,7 +391,10 @@ const PRESETS: Record<PresetKey, {
         brightness += hoverInfluence * 0.5;
       }
 
-      return { x, y, scale: clamp(scale, 0.8, 1.3), rotate: 0, opacity: 1, filterStrength: 0, brightness: clamp(brightness, 0.9, 1.4) };
+      // Constrain to container bounds
+      const constrained = constrainToBounds(shape, x, y, clamp(scale, 0.8, 1.3), viewBox);
+
+      return { x: constrained.x, y: constrained.y, scale: clamp(scale, 0.8, 1.3), rotate: 0, opacity: 1, filterStrength: 0, brightness: clamp(brightness, 0.9, 1.4) };
     },
   },
 
@@ -402,7 +455,10 @@ const PRESETS: Record<PresetKey, {
         y += (pointer.y - 0.5) * hoverInfluence * 20;
       }
 
-      return { x, y, scale, rotate, opacity: 1, filterStrength: state.clickTime > 0 ? filterStrength * Math.exp(-state.clickTime * 0.5) : 0, brightness: 1 };
+      // Constrain to container bounds
+      const constrained = constrainToBounds(shape, x, y, scale, viewBox);
+
+      return { x: constrained.x, y: constrained.y, scale, rotate, opacity: 1, filterStrength: state.clickTime > 0 ? filterStrength * Math.exp(-state.clickTime * 0.5) : 0, brightness: 1 };
     },
   },
 
@@ -473,7 +529,10 @@ const PRESETS: Record<PresetKey, {
         y += Math.sin(angle) * hoverInfluence * 5;
       }
 
-      return { x, y, scale: 1, rotate, opacity: 1, filterStrength: 0, brightness: 1 };
+      // Constrain to container bounds
+      const constrained = constrainToBounds(shape, x, y, 1, viewBox);
+
+      return { x: constrained.x, y: constrained.y, scale: 1, rotate, opacity: 1, filterStrength: 0, brightness: 1 };
     },
   },
 
@@ -519,7 +578,10 @@ const PRESETS: Record<PresetKey, {
         y += bandInfluence * 3 * Math.cos(pointerPhase * 0.5);
       }
 
-      return { x, y, scale: 1, rotate: 0, opacity, filterStrength: 0, brightness: clamp(brightness, 0.8, 1.3) };
+      // Constrain to container bounds
+      const constrained = constrainToBounds(shape, x, y, 1, viewBox);
+
+      return { x: constrained.x, y: constrained.y, scale: 1, rotate: 0, opacity, filterStrength: 0, brightness: clamp(brightness, 0.8, 1.3) };
     },
   },
 };
