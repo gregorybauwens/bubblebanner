@@ -653,7 +653,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         }
       }
       
-      if (clickedShape && !presetState.isReturning) {
+      if (clickedShape) {
         // Find the actual shape/fragment to shatter
         const isFragment = clickedShape.id.startsWith('frag-');
         
@@ -715,7 +715,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             shatteredShapeIds: shatteredIds,
             clickPoint: point,
             lastClickTime: prev.clickTime,
-            isReturning: false,
+            isReturning: false, // Reset returning state so new fragments can explode
           };
         });
         return;
