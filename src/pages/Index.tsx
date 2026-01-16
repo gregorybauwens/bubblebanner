@@ -53,6 +53,8 @@ const ControlPanel = ({
         </label>
         <div className="space-y-1">
           <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControl('shardSpread', v)} min={0.1} max={3} />
+          <ControlSlider label="Force" value={controls.explosionForce} onChange={(v) => updateControl('explosionForce', v)} min={0.3} max={3} />
+          <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControl('explosionSpin', v)} min={0} max={3} />
         </div>
       </div>
 
