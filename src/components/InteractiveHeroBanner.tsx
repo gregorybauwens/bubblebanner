@@ -105,6 +105,7 @@ interface Controls {
   shardSpread: number;
   settleTime: number;
   returnSpring: number;
+  settleDamping: number; // Higher = less bouncy, quicker settle
 }
 
 // ============================================================================
@@ -454,8 +455,9 @@ const PRESETS: Record<PresetKey, {
           const targetY = (row + 0.5) * cellHeight - frag.shape.centroid.y;
           
           // Spring towards grid position (not original position)
-          const springForce = controls.returnSpring * 4;
-          const damping = 0.85;
+          const springForce = controls.returnSpring * 6;
+          // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
+          const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
           
           const diffX = targetX - frag.offsetX;
           const diffY = targetY - frag.offsetY;
@@ -564,7 +566,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     timeScale: 1,
     shardSpread: 1,
     settleTime: 2,
-    returnSpring: 1.5,
+    returnSpring: 2,
+    settleDamping: 1.2, // Default to quick, minimal bounce
   });
 
   // Animation state
