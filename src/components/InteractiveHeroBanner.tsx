@@ -41,6 +41,9 @@ interface Shape {
   fill?: string;
   stroke?: string;
   opacity?: number;
+  // For fragmented shapes
+  parentId?: string;
+  generation?: number;
 }
 
 interface ViewBox {
@@ -70,17 +73,20 @@ interface Attractor {
   phase: number;
 }
 
+// Fragment tracks each piece after shattering
 interface ShardFragment {
   id: string;
-  parentId: string;
+  shape: Shape; // The actual shape data for this fragment
+  originalShape: Shape; // Reference to the original parent shape
   offsetX: number;
   offsetY: number;
-  scale: number;
   rotation: number;
   vx: number;
   vy: number;
   vr: number;
   generation: number;
+  spawnTime: number;
+  isExploding: boolean;
 }
 
 interface PresetState {
@@ -90,11 +96,12 @@ interface PresetState {
   clickTime: number;
   phase: number;
   shapeVelocities: Map<string, { vx: number; vy: number; vr: number }>;
-  // Voronoi shatter state
+  // Voronoi shatter state - fragments replace original shapes
   shardFragments: ShardFragment[];
-  shatterCount: number;
+  shatteredShapeIds: Set<string>; // Track which original shapes have been shattered
   isReturning: boolean;
   returnStartTime: number;
+  lastClickTime: number;
 }
 
 interface ShapeTransform {
@@ -299,6 +306,121 @@ const calculateBounds = (type: string, attrs: Record<string, string>) => {
 };
 
 // ============================================================================
+// FRAGMENT CREATION - Creates child shapes from a parent
+// ============================================================================
+const createFragmentsFromShape = (
+  shape: Shape,
+  clickPoint: { x: number; y: number },
+  viewBox: ViewBox,
+  controls: Controls,
+  generation: number,
+  currentTime: number
+): ShardFragment[] => {
+  const fragments: ShardFragment[] = [];
+  const fragmentCount = Math.min(2 + Math.floor(Math.random() * 2), 4); // 2-4 pieces
+  
+  const bounds = shape.bounds;
+  const isHorizontalShape = bounds.width > bounds.height;
+  
+  for (let i = 0; i < fragmentCount; i++) {
+    const seed = Date.now() + i * 1000 + Math.random() * 1000;
+    
+    // Calculate fragment bounds - divide the parent shape
+    let fragBounds: { x: number; y: number; width: number; height: number };
+    
+    if (isHorizontalShape) {
+      // Split horizontally
+      const sliceWidth = bounds.width / fragmentCount;
+      fragBounds = {
+        x: bounds.x + sliceWidth * i,
+        y: bounds.y,
+        width: sliceWidth,
+        height: bounds.height,
+      };
+    } else {
+      // Split vertically
+      const sliceHeight = bounds.height / fragmentCount;
+      fragBounds = {
+        x: bounds.x,
+        y: bounds.y + sliceHeight * i,
+        width: bounds.width,
+        height: sliceHeight,
+      };
+    }
+    
+    // Add some randomness to the slice
+    const jitterX = (seededRandom(seed) - 0.5) * fragBounds.width * 0.1;
+    const jitterY = (seededRandom(seed * 2) - 0.5) * fragBounds.height * 0.1;
+    
+    const fragCentroid = {
+      x: fragBounds.x + fragBounds.width / 2 + jitterX,
+      y: fragBounds.y + fragBounds.height / 2 + jitterY,
+    };
+    
+    // Calculate explosion direction from click point
+    const clickX = clickPoint.x * viewBox.width;
+    const clickY = clickPoint.y * viewBox.height;
+    const angleFromClick = Math.atan2(
+      fragCentroid.y - clickY,
+      fragCentroid.x - clickX
+    );
+    
+    // Add some spread
+    const angleVariation = (seededRandom(seed * 3) - 0.5) * 0.8;
+    const finalAngle = angleFromClick + angleVariation;
+    
+    const speed = controls.shardSpread * controls.clickStrength * (0.6 + seededRandom(seed * 4) * 0.8);
+    const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
+    const impulse = Math.max(0.5, 1.5 - distFromClick * 1.5);
+    
+    // Create SVG element for the fragment (clipped rect)
+    const rx = parseFloat(shape.attrs.rx || '0');
+    const ry = parseFloat(shape.attrs.ry || rx.toString());
+    const scaledRx = Math.min(rx, fragBounds.width / 2, fragBounds.height / 2);
+    const scaledRy = Math.min(ry, fragBounds.width / 2, fragBounds.height / 2);
+    
+    const fragElement = `<rect x="${fragBounds.x}" y="${fragBounds.y}" width="${fragBounds.width}" height="${fragBounds.height}" rx="${scaledRx}" ry="${scaledRy}" fill="${shape.fill || '#ECB300'}"/>`;
+    
+    const fragShape: Shape = {
+      id: `frag-${shape.id}-${generation}-${i}-${Date.now()}`,
+      type: 'rect',
+      element: fragElement,
+      attrs: {
+        x: fragBounds.x.toString(),
+        y: fragBounds.y.toString(),
+        width: fragBounds.width.toString(),
+        height: fragBounds.height.toString(),
+        rx: scaledRx.toString(),
+        ry: scaledRy.toString(),
+        fill: shape.fill || '#ECB300',
+      },
+      centroid: fragCentroid,
+      bounds: fragBounds,
+      fill: shape.fill,
+      parentId: shape.id,
+      generation,
+    };
+    
+    fragments.push({
+      id: fragShape.id,
+      shape: fragShape,
+      originalShape: shape.parentId ? shape : shape, // Keep reference to root shape
+      offsetX: 0,
+      offsetY: 0,
+      rotation: 0,
+      vx: Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.3,
+      vy: Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.6,
+      vr: (seededRandom(seed * 5) - 0.5) * 80 * controls.shardSpread,
+      generation,
+      spawnTime: currentTime,
+      isExploding: true,
+    });
+  }
+  
+  return fragments;
+};
+
+// ============================================================================
 // PRESET ENGINE
 // ============================================================================
 const createInitialState = (): PresetState => ({
@@ -309,15 +431,16 @@ const createInitialState = (): PresetState => ({
   phase: 0,
   shapeVelocities: new Map(),
   shardFragments: [],
-  shatterCount: 0,
+  shatteredShapeIds: new Set(),
   isReturning: false,
   returnStartTime: 0,
+  lastClickTime: 0,
 });
 
 const PRESETS: Record<PresetKey, {
   name: string;
   description: string;
-  initClick: (state: PresetState, point: { x: number; y: number }, controls: Controls) => PresetState;
+  initClick: (state: PresetState, point: { x: number; y: number }, controls: Controls, shapes?: Shape[], viewBox?: ViewBox, clickedShapeId?: string | null) => PresetState;
   update: (state: PresetState, dt: number, pointer: { x: number; y: number } | null, controls: Controls, shapes: Shape[], viewBox: ViewBox) => PresetState;
   shapeTransform: (shape: Shape, state: PresetState, pointer: { x: number; y: number } | null, controls: Controls, viewBox: ViewBox) => ShapeTransform;
 }> = {
@@ -422,175 +545,104 @@ const PRESETS: Record<PresetKey, {
 
   // -------------------------------------------------------------------------
   // PRESET B: VORONOI SHATTER
-  // Radial explosion from click point with spring return.
-  // Multiple clicks create additional fragments that explode and return.
+  // Click on a shape to shatter it into pieces. Click pieces to shatter further.
+  // After a delay, all pieces spring back together.
   // -------------------------------------------------------------------------
   voronoi: {
     name: 'Voronoi Shatter',
-    description: 'Glass-like shatter with spring return',
-    initClick: (state, point, controls) => {
-      // Increment shatter count for multi-click fragmentation
-      const newShatterCount = state.shatterCount + 1;
-      
-      // Create new fragments based on shatter count
-      // Each click adds more fragment "layers" that explode
-      const newFragments: ShardFragment[] = [];
-      const fragmentsPerClick = Math.min(3 + newShatterCount, 8); // More fragments with each click
-      
-      for (let i = 0; i < fragmentsPerClick; i++) {
-        const seed = Date.now() + i * 1000;
-        const angle = (Math.PI * 2 * i) / fragmentsPerClick + seededRandom(seed) * 0.5;
-        const speed = controls.shardSpread * (0.8 + seededRandom(seed * 17) * 0.4);
-        const distFromClick = 0.1 + seededRandom(seed * 31) * 0.2;
-        
-        newFragments.push({
-          id: `frag-${newShatterCount}-${i}`,
-          parentId: `shape-${i % 6}`, // Distribute across shapes
-          offsetX: Math.cos(angle) * distFromClick,
-          offsetY: Math.sin(angle) * distFromClick,
-          scale: 0.8 + seededRandom(seed * 47) * 0.4,
-          rotation: (seededRandom(seed * 59) - 0.5) * 360,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          vr: (seededRandom(seed * 71) - 0.5) * 400,
-          generation: newShatterCount,
-        });
-      }
-      
+    description: 'Click shapes to shatter them into pieces',
+    initClick: (state, point, controls, _shapes, viewBox, clickedShapeId) => {
+      // This is handled specially in the component - see handleVoronoiClick
       return { 
         ...state, 
         clickPoint: point, 
-        clickTime: 0, 
-        shapeVelocities: new Map(),
-        shardFragments: [...state.shardFragments, ...newFragments],
-        shatterCount: newShatterCount,
-        isReturning: false,
-        returnStartTime: 0,
+        clickTime: state.clickTime, // Don't reset
+        lastClickTime: state.clickTime,
       };
     },
     update: (state, dt, _pointer, controls, shapes, viewBox) => {
       const newClickTime = state.clickTime + dt;
-      const returnDelay = controls.settleTime * 0.6; // Time before spring-back starts
+      const returnDelay = controls.settleTime * 1.5; // Time before spring-back starts
       
-      // Check if we should start returning
-      const shouldReturn = newClickTime > returnDelay && !state.isReturning;
+      // Check if we should start returning (no clicks for a while)
+      const timeSinceLastClick = newClickTime - state.lastClickTime;
+      const shouldStartReturn = timeSinceLastClick > returnDelay && 
+                                state.shardFragments.length > 0 && 
+                                !state.isReturning;
       
       let newState = { 
         ...state, 
         clickTime: newClickTime,
-        isReturning: state.isReturning || shouldReturn,
-        returnStartTime: shouldReturn ? newClickTime : state.returnStartTime,
+        isReturning: state.isReturning || shouldStartReturn,
+        returnStartTime: shouldStartReturn ? newClickTime : state.returnStartTime,
       };
       
-      // Initialize velocities for shapes on first click
-      if (state.clickPoint && state.shapeVelocities.size === 0) {
-        const velocities = new Map<string, { vx: number; vy: number; vr: number }>();
-        shapes.forEach(shape => {
-          // Calculate angle from click point to shape centroid (in normalized space)
-          const shapeNormX = shape.centroid.x / viewBox.width;
-          const shapeNormY = shape.centroid.y / viewBox.height;
-          const angleFromClick = Math.atan2(
-            shapeNormY - state.clickPoint!.y, 
-            shapeNormX - state.clickPoint!.x
-          );
-          const distFromClick = distance(shapeNormX, shapeNormY, state.clickPoint!.x, state.clickPoint!.y);
-          
-          // Closer shapes get MORE impulse (glass shatters more at impact point)
-          const impulseMultiplier = Math.max(0.5, 1.5 - distFromClick * 2);
-          const baseSpeed = controls.shardSpread * controls.clickStrength * impulseMultiplier;
-          const seed = parseInt(shape.id.split('-')[1]) || 0;
-          const randomVariation = 0.7 + seededRandom(seed) * 0.6;
-          
-          // Scale to viewBox dimensions for visible movement
-          velocities.set(shape.id, {
-            vx: Math.cos(angleFromClick) * baseSpeed * viewBox.width * 0.4 * randomVariation,
-            vy: Math.sin(angleFromClick) * baseSpeed * viewBox.height * 0.8 * randomVariation,
-            vr: (seededRandom(seed * 47) - 0.5) * 60 * controls.shardSpread,
-          });
-        });
-        newState.shapeVelocities = velocities;
-      }
-      
-      // Update fragment velocities with physics
+      // Update fragment physics
       const updatedFragments = state.shardFragments.map(frag => {
+        const fragAge = newClickTime - frag.spawnTime;
+        
         if (state.isReturning) {
-          // Spring back to origin
-          const returnProgress = (newClickTime - state.returnStartTime) / (controls.settleTime * 0.8);
-          const springForce = controls.returnSpring * 3;
+          // Spring back to original position
+          const returnT = newClickTime - state.returnStartTime;
+          const springForce = controls.returnSpring * 4;
+          const damping = 0.85;
+          
+          // Calculate target position (original shape position)
+          const targetX = 0;
+          const targetY = 0;
+          const targetRot = 0;
+          
+          const newVx = frag.vx * damping - frag.offsetX * springForce * dt * 60;
+          const newVy = frag.vy * damping - frag.offsetY * springForce * dt * 60;
+          const newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
+          
           return {
             ...frag,
-            vx: frag.vx * 0.9 - frag.offsetX * springForce * dt,
-            vy: frag.vy * 0.9 - frag.offsetY * springForce * dt,
-            vr: frag.vr * 0.85,
-            offsetX: frag.offsetX + frag.vx * dt * 0.5,
-            offsetY: frag.offsetY + frag.vy * dt * 0.5,
-            rotation: frag.rotation + frag.vr * dt,
+            vx: newVx,
+            vy: newVy,
+            vr: newVr,
+            offsetX: frag.offsetX + newVx * dt,
+            offsetY: frag.offsetY + newVy * dt,
+            rotation: frag.rotation + newVr * dt,
+            isExploding: false,
           };
-        } else {
-          // Continue explosion with damping
+        } else if (frag.isExploding) {
+          // Explosion phase with damping
+          const damping = 0.97;
           return {
             ...frag,
-            vx: frag.vx * 0.98,
-            vy: frag.vy * 0.98,
-            vr: frag.vr * 0.95,
+            vx: frag.vx * damping,
+            vy: frag.vy * damping,
+            vr: frag.vr * damping,
             offsetX: frag.offsetX + frag.vx * dt,
             offsetY: frag.offsetY + frag.vy * dt,
             rotation: frag.rotation + frag.vr * dt,
           };
         }
+        return frag;
       });
       
-      // Clean up fragments that have returned close to origin
-      const returnProgress = state.isReturning ? (newClickTime - state.returnStartTime) / (controls.settleTime * 1.5) : 0;
-      if (returnProgress > 1) {
-        newState.shardFragments = [];
-        newState.shatterCount = 0;
-        newState.isReturning = false;
-      } else {
-        newState.shardFragments = updatedFragments;
+      // Clean up when return animation is complete
+      if (state.isReturning) {
+        const returnProgress = newClickTime - state.returnStartTime;
+        if (returnProgress > controls.settleTime * 2) {
+          // Reset everything
+          return {
+            ...newState,
+            shardFragments: [],
+            shatteredShapeIds: new Set<string>(),
+            isReturning: false,
+            returnStartTime: 0,
+            lastClickTime: 0,
+          };
+        }
       }
-
+      
+      newState.shardFragments = updatedFragments;
       return newState;
     },
     shapeTransform: (shape, state, pointer, controls, viewBox) => {
       let x = 0, y = 0, scale = 1, rotate = 0, opacity = 1;
-      const filterStrength = controls.turbulence;
-
-      // Apply shatter effect after click
-      if (state.clickPoint && state.clickTime > 0) {
-        const vel = state.shapeVelocities.get(shape.id);
-        if (vel) {
-          const t = state.clickTime;
-          
-          if (state.isReturning) {
-            // Spring return animation
-            const returnT = t - state.returnStartTime;
-            const springDamping = controls.returnSpring * 2;
-            const springProgress = 1 - Math.exp(-returnT * springDamping);
-            
-            // Smooth spring oscillation for natural feel
-            const oscillation = Math.cos(returnT * 8) * Math.exp(-returnT * 3);
-            const returnMultiplier = (1 - springProgress) + oscillation * 0.1;
-            
-            // Calculate current explosion offset
-            const explosionDecay = Math.exp(-state.returnStartTime * 0.5);
-            x = vel.vx * explosionDecay * returnMultiplier;
-            y = vel.vy * explosionDecay * returnMultiplier;
-            rotate = vel.vr * explosionDecay * returnMultiplier;
-          } else {
-            // Explosion phase - shapes fly outward
-            const explosionProgress = 1 - Math.exp(-t * 2);
-            const damping = Math.exp(-t * 0.3);
-            
-            x = vel.vx * explosionProgress * damping;
-            y = vel.vy * explosionProgress * damping;
-            rotate = vel.vr * explosionProgress * damping;
-            
-            // Slight scale pulse during explosion
-            scale = 1 + Math.sin(t * 10) * 0.03 * damping;
-          }
-        }
-      }
 
       // Hover parallax - only when pointer is present
       if (pointer) {
@@ -598,12 +650,10 @@ const PRESETS: Record<PresetKey, {
         const shapeNormY = shape.centroid.y / viewBox.height;
         const hoverDist = distance(shapeNormX, shapeNormY, pointer.x, pointer.y);
         const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
-        // Pull shapes toward pointer with viewBox-scaled movement
         x += (pointer.x - shapeNormX) * hoverInfluence * viewBox.width * 0.05;
         y += (pointer.y - shapeNormY) * hoverInfluence * viewBox.height * 0.05;
       }
 
-      // Constrain to container bounds
       const constrained = constrainToBounds(shape, x, y, scale, viewBox);
 
       return { 
@@ -612,7 +662,7 @@ const PRESETS: Record<PresetKey, {
         scale, 
         rotate, 
         opacity, 
-        filterStrength: state.clickTime > 0 ? filterStrength * Math.exp(-state.clickTime * 0.3) : 0, 
+        filterStrength: 0, 
         brightness: 1 
       };
     },
@@ -844,9 +894,125 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       y: (clientY - rect.top) / rect.height,
     };
     
+    // Convert to viewBox coordinates for hit testing
+    const clickX = point.x * viewBox.width;
+    const clickY = point.y * viewBox.height;
+    
+    // Special handling for voronoi preset - detect which shape was clicked
+    if (activePreset === 'voronoi') {
+      // Get all clickable shapes (original shapes not yet shattered + fragments)
+      const clickableShapes: Shape[] = [];
+      
+      // Add fragments first (they're on top)
+      presetState.shardFragments.forEach(frag => {
+        // Adjust bounds by fragment offset
+        const adjustedBounds = {
+          x: frag.shape.bounds.x + frag.offsetX,
+          y: frag.shape.bounds.y + frag.offsetY,
+          width: frag.shape.bounds.width,
+          height: frag.shape.bounds.height,
+        };
+        clickableShapes.push({
+          ...frag.shape,
+          bounds: adjustedBounds,
+          centroid: {
+            x: frag.shape.centroid.x + frag.offsetX,
+            y: frag.shape.centroid.y + frag.offsetY,
+          },
+        });
+      });
+      
+      // Add original shapes that haven't been shattered
+      shapes.forEach(shape => {
+        if (!presetState.shatteredShapeIds.has(shape.id)) {
+          clickableShapes.push(shape);
+        }
+      });
+      
+      // Find clicked shape (check from top to bottom - fragments first)
+      let clickedShape: Shape | null = null;
+      for (const shape of clickableShapes) {
+        const b = shape.bounds;
+        if (clickX >= b.x && clickX <= b.x + b.width &&
+            clickY >= b.y && clickY <= b.y + b.height) {
+          clickedShape = shape;
+          break; // Take the first (topmost) match
+        }
+      }
+      
+      if (clickedShape && !presetState.isReturning) {
+        // Find the actual shape/fragment to shatter
+        const isFragment = clickedShape.id.startsWith('frag-');
+        
+        // Get the shape to fragment (either the clicked fragment's original shape or the original shape)
+        let shapeToFragment: Shape;
+        let fragmentToRemove: ShardFragment | null = null;
+        
+        if (isFragment) {
+          // Find the fragment that was clicked
+          fragmentToRemove = presetState.shardFragments.find(f => f.shape.id === clickedShape!.id) || null;
+          if (fragmentToRemove) {
+            shapeToFragment = {
+              ...fragmentToRemove.shape,
+              bounds: {
+                x: fragmentToRemove.shape.bounds.x + fragmentToRemove.offsetX,
+                y: fragmentToRemove.shape.bounds.y + fragmentToRemove.offsetY,
+                width: fragmentToRemove.shape.bounds.width,
+                height: fragmentToRemove.shape.bounds.height,
+              },
+              centroid: {
+                x: fragmentToRemove.shape.centroid.x + fragmentToRemove.offsetX,
+                y: fragmentToRemove.shape.centroid.y + fragmentToRemove.offsetY,
+              },
+            };
+          } else {
+            return;
+          }
+        } else {
+          shapeToFragment = clickedShape;
+        }
+        
+        // Create new fragments from the clicked shape
+        const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
+        const newFragments = createFragmentsFromShape(
+          shapeToFragment,
+          point,
+          viewBox,
+          controls,
+          generation,
+          presetState.clickTime
+        );
+        
+        setPresetState(prev => {
+          // Remove the fragment that was clicked (if it was a fragment)
+          let updatedFragments = prev.shardFragments;
+          if (fragmentToRemove) {
+            updatedFragments = prev.shardFragments.filter(f => f.id !== fragmentToRemove!.id);
+          }
+          
+          // Add new fragments
+          const shatteredIds = new Set(prev.shatteredShapeIds);
+          if (!isFragment) {
+            shatteredIds.add(clickedShape!.id);
+          }
+          
+          return {
+            ...prev,
+            shardFragments: [...updatedFragments, ...newFragments],
+            shatteredShapeIds: shatteredIds,
+            clickPoint: point,
+            lastClickTime: prev.clickTime,
+            isReturning: false,
+          };
+        });
+        return;
+      }
+    }
+    
+    // Default click handling for other presets
     const preset = PRESETS[activePreset];
-    setPresetState(prev => preset.initClick(prev, point, controls));
-  }, [activePreset, controls]);
+    setPresetState(prev => preset.initClick(prev, point, controls, shapes, viewBox, null));
+  }, [activePreset, controls, shapes, viewBox, presetState]);
 
   const handleReset = useCallback(() => {
     setPresetState(createInitialState());
@@ -930,8 +1096,13 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             </filter>
           </defs>
 
-          {/* Render shapes */}
+          {/* Render shapes - for voronoi, hide shattered shapes */}
           {shapes.map((shape) => {
+            // For voronoi preset, hide shapes that have been shattered into fragments
+            if (activePreset === 'voronoi' && presetState.shatteredShapeIds.has(shape.id)) {
+              return null;
+            }
+            
             const transform = shapeTransforms.get(shape.id) || { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, filterStrength: 0, brightness: 1 };
             const centerX = shape.centroid.x;
             const centerY = shape.centroid.y;
@@ -960,6 +1131,40 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                 }}
               >
                 <g dangerouslySetInnerHTML={{ __html: shape.element }} />
+              </motion.g>
+            );
+          })}
+          
+          {/* Render voronoi fragments */}
+          {activePreset === 'voronoi' && presetState.shardFragments.map((frag) => {
+            const centerX = frag.shape.centroid.x;
+            const centerY = frag.shape.centroid.y;
+            
+            return (
+              <motion.g
+                key={frag.id}
+                initial={{ 
+                  x: 0, 
+                  y: 0, 
+                  rotate: 0,
+                  opacity: 1,
+                }}
+                animate={{
+                  x: frag.offsetX,
+                  y: frag.offsetY,
+                  rotate: frag.rotation,
+                  opacity: 1,
+                }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 200,
+                  damping: 20,
+                }}
+                style={{
+                  transformOrigin: `${centerX}px ${centerY}px`,
+                }}
+              >
+                <g dangerouslySetInnerHTML={{ __html: frag.shape.element }} />
               </motion.g>
             );
           })}
