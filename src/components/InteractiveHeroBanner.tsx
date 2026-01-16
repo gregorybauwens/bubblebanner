@@ -73,6 +73,20 @@ interface ShardFragment {
   isExploding: boolean;
 }
 
+// Crack line for glass shattering effect
+interface CrackLine {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  spawnTime: number;
+  duration: number;
+  delay: number;
+  width: number;
+  branches: CrackLine[];
+}
+
 interface PresetState {
   clickPoint: { x: number; y: number } | null;
   clickTime: number;
@@ -82,6 +96,8 @@ interface PresetState {
   isReturning: boolean;
   returnStartTime: number;
   lastClickTime: number;
+  // Glass crack lines
+  crackLines: CrackLine[];
 }
 
 interface ShapeTransform {
@@ -412,7 +428,75 @@ const createInitialState = (): PresetState => ({
   isReturning: false,
   returnStartTime: 0,
   lastClickTime: 0,
+  crackLines: [],
 });
+
+// Generate glass crack lines from a click point
+const generateCrackLines = (
+  clickX: number,
+  clickY: number,
+  bounds: { x: number; y: number; width: number; height: number },
+  currentTime: number,
+  numCracks: number = 8
+): CrackLine[] => {
+  const cracks: CrackLine[] = [];
+  const maxLength = Math.max(bounds.width, bounds.height) * 0.8;
+  
+  for (let i = 0; i < numCracks; i++) {
+    // Radiate outward from click point with some randomness
+    const baseAngle = (i / numCracks) * Math.PI * 2;
+    const angleVariation = (seededRandom(i * 17 + currentTime) - 0.5) * 0.5;
+    const angle = baseAngle + angleVariation;
+    
+    const length = maxLength * (0.4 + seededRandom(i * 31 + currentTime) * 0.6);
+    const endX = clickX + Math.cos(angle) * length;
+    const endY = clickY + Math.sin(angle) * length;
+    
+    // Create main crack
+    const mainCrack: CrackLine = {
+      id: `crack-${i}-${currentTime}`,
+      x1: clickX,
+      y1: clickY,
+      x2: endX,
+      y2: endY,
+      spawnTime: currentTime,
+      duration: 0.15 + seededRandom(i * 7) * 0.1,
+      delay: i * 0.02, // Stagger the cracks
+      width: 2 + seededRandom(i * 13) * 1.5,
+      branches: [],
+    };
+    
+    // Add 1-3 branches to each main crack
+    const numBranches = 1 + Math.floor(seededRandom(i * 23 + currentTime) * 3);
+    for (let b = 0; b < numBranches; b++) {
+      const branchT = 0.3 + seededRandom(i * 41 + b * 11) * 0.5; // Position along main crack
+      const branchX = clickX + (endX - clickX) * branchT;
+      const branchY = clickY + (endY - clickY) * branchT;
+      
+      // Branch angle deviates from main crack
+      const branchAngleOffset = (seededRandom(i * 53 + b * 17) - 0.5) * Math.PI * 0.6;
+      const branchAngle = angle + branchAngleOffset;
+      const branchLength = length * (0.2 + seededRandom(i * 67 + b * 23) * 0.3);
+      
+      mainCrack.branches.push({
+        id: `crack-${i}-branch-${b}-${currentTime}`,
+        x1: branchX,
+        y1: branchY,
+        x2: branchX + Math.cos(branchAngle) * branchLength,
+        y2: branchY + Math.sin(branchAngle) * branchLength,
+        spawnTime: currentTime,
+        duration: 0.1 + seededRandom(i * 79 + b) * 0.08,
+        delay: i * 0.02 + branchT * 0.1,
+        width: 1 + seededRandom(i * 89 + b * 31) * 1,
+        branches: [],
+      });
+    }
+    
+    cracks.push(mainCrack);
+  }
+  
+  return cracks;
+};
 
 const PRESETS: Record<PresetKey, {
   name: string;
@@ -779,6 +863,17 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           presetState.clickTime
         );
         
+        // Generate crack lines from the click point
+        const crackClickX = point.x * viewBox.width;
+        const crackClickY = point.y * viewBox.height;
+        const newCrackLines = generateCrackLines(
+          crackClickX,
+          crackClickY,
+          shapeToFragment.bounds,
+          presetState.clickTime,
+          6 + Math.floor(Math.random() * 4) // 6-9 cracks
+        );
+        
         setPresetState(prev => {
           // Remove the fragment that was clicked (if it was a fragment)
           let updatedFragments = prev.shardFragments;
@@ -792,6 +887,11 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             shatteredIds.add(clickedShape!.id);
           }
           
+          // Keep old crack lines that haven't faded yet (within 0.8 seconds)
+          const activeCrackLines = prev.crackLines.filter(
+            crack => prev.clickTime - crack.spawnTime < 0.8
+          );
+          
           return {
             ...prev,
             shardFragments: [...updatedFragments, ...newFragments],
@@ -799,6 +899,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             clickPoint: point,
             lastClickTime: prev.clickTime,
             isReturning: false, // Reset returning state so new fragments can explode
+            crackLines: [...activeCrackLines, ...newCrackLines],
           };
         });
         return;
@@ -962,6 +1063,93 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
               >
                 <g dangerouslySetInnerHTML={{ __html: frag.shape.element }} />
               </motion.g>
+            );
+          })}
+          
+          {/* Render glass crack lines */}
+          {activePreset === 'voronoi' && presetState.crackLines.map((crack) => {
+            const elapsed = presetState.clickTime - crack.spawnTime;
+            const fadeOutStart = 0.4;
+            const fadeOutDuration = 0.4;
+            const opacity = elapsed > fadeOutStart 
+              ? Math.max(0, 1 - (elapsed - fadeOutStart) / fadeOutDuration)
+              : 1;
+            
+            if (opacity <= 0) return null;
+            
+            // Calculate animation progress for each crack
+            const crackProgress = Math.min(1, Math.max(0, (elapsed - crack.delay) / crack.duration));
+            const eased = 1 - Math.pow(1 - crackProgress, 3); // Ease out cubic
+            
+            const currentX2 = crack.x1 + (crack.x2 - crack.x1) * eased;
+            const currentY2 = crack.y1 + (crack.y2 - crack.y1) * eased;
+            
+            return (
+              <g key={crack.id} opacity={opacity}>
+                {/* Main crack line */}
+                <line
+                  x1={crack.x1}
+                  y1={crack.y1}
+                  x2={currentX2}
+                  y2={currentY2}
+                  stroke="rgba(255, 255, 255, 0.9)"
+                  strokeWidth={crack.width}
+                  strokeLinecap="round"
+                  style={{
+                    filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.8)) drop-shadow(0 0 6px rgba(255,255,255,0.4))',
+                  }}
+                />
+                {/* Darker edge for depth */}
+                <line
+                  x1={crack.x1}
+                  y1={crack.y1}
+                  x2={currentX2}
+                  y2={currentY2}
+                  stroke="rgba(0, 0, 0, 0.3)"
+                  strokeWidth={crack.width * 0.5}
+                  strokeLinecap="round"
+                />
+                
+                {/* Branch cracks */}
+                {crack.branches.map((branch) => {
+                  const branchElapsed = elapsed;
+                  const branchProgress = Math.min(1, Math.max(0, (branchElapsed - branch.delay) / branch.duration));
+                  const branchEased = 1 - Math.pow(1 - branchProgress, 3);
+                  
+                  // Only show branch if main crack has reached it
+                  const mainReachedBranch = crackProgress >= 0.3;
+                  if (!mainReachedBranch) return null;
+                  
+                  const branchX2 = branch.x1 + (branch.x2 - branch.x1) * branchEased;
+                  const branchY2 = branch.y1 + (branch.y2 - branch.y1) * branchEased;
+                  
+                  return (
+                    <g key={branch.id}>
+                      <line
+                        x1={branch.x1}
+                        y1={branch.y1}
+                        x2={branchX2}
+                        y2={branchY2}
+                        stroke="rgba(255, 255, 255, 0.7)"
+                        strokeWidth={branch.width}
+                        strokeLinecap="round"
+                        style={{
+                          filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.6))',
+                        }}
+                      />
+                      <line
+                        x1={branch.x1}
+                        y1={branch.y1}
+                        x2={branchX2}
+                        y2={branchY2}
+                        stroke="rgba(0, 0, 0, 0.2)"
+                        strokeWidth={branch.width * 0.4}
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  );
+                })}
+              </g>
             );
           })}
         </svg>
