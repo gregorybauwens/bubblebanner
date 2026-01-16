@@ -106,6 +106,9 @@ interface Controls {
   settleTime: number;
   returnSpring: number;
   settleDamping: number; // Higher = less bouncy, quicker settle
+  // Explosion controls
+  explosionForce: number; // How hard fragments explode outward
+  explosionSpin: number; // How much fragments rotate on explosion
 }
 
 // ============================================================================
@@ -329,13 +332,18 @@ const createFragmentsFromShape = (
       fragCentroid.x - clickX
     );
     
-    // Add some spread
-    const angleVariation = (seededRandom(seed * 3) - 0.5) * 0.8;
+    // Add some spread - wider angle variation for more chaotic explosion
+    const angleVariation = (seededRandom(seed * 3) - 0.5) * 1.2;
     const finalAngle = angleFromClick + angleVariation;
     
-    const speed = controls.shardSpread * controls.clickStrength * (0.6 + seededRandom(seed * 4) * 0.8);
+    // Explosion force calculation - much more intense burst
+    const baseSpeed = controls.explosionForce * 2.5;
+    const speedVariation = 0.5 + seededRandom(seed * 4) * 1.0; // More variation
+    const speed = baseSpeed * speedVariation * controls.shardSpread;
+    
+    // Distance-based impulse - closer = stronger explosion
     const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
-    const impulse = Math.max(0.5, 1.5 - distFromClick * 1.5);
+    const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5); // Higher base impulse
     
     // Create SVG element for the fragment (clipped rect)
     const rx = parseFloat(shape.attrs.rx || '0');
@@ -365,6 +373,15 @@ const createFragmentsFromShape = (
       generation,
     };
     
+    // Calculate powerful initial velocity - dramatic burst effect
+    const explosionVx = Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.5;
+    const explosionVy = Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.8;
+    
+    // Spin based on explosion direction and control setting
+    const spinDirection = seededRandom(seed * 5) > 0.5 ? 1 : -1;
+    const spinMagnitude = controls.explosionSpin * 150 * (0.5 + seededRandom(seed * 6) * 0.5);
+    const explosionVr = spinDirection * spinMagnitude * impulse;
+    
     fragments.push({
       id: fragShape.id,
       shape: fragShape,
@@ -372,9 +389,9 @@ const createFragmentsFromShape = (
       offsetX: 0,
       offsetY: 0,
       rotation: 0,
-      vx: Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.3,
-      vy: Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.6,
-      vr: (seededRandom(seed * 5) - 0.5) * 80 * controls.shardSpread,
+      vx: explosionVx,
+      vy: explosionVy,
+      vr: explosionVr,
       generation,
       spawnTime: currentTime,
       isExploding: true,
@@ -629,6 +646,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     settleTime: 2,
     returnSpring: 2,
     settleDamping: 1.2, // Default to quick, minimal bounce
+    explosionForce: 1.5, // Strong default burst
+    explosionSpin: 1, // Moderate spin
   });
 
   // Animation state
