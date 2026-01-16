@@ -318,7 +318,7 @@ const PRESETS: Record<PresetKey, {
   name: string;
   description: string;
   initClick: (state: PresetState, point: { x: number; y: number }, controls: Controls) => PresetState;
-  update: (state: PresetState, dt: number, pointer: { x: number; y: number } | null, controls: Controls, shapes: Shape[]) => PresetState;
+  update: (state: PresetState, dt: number, pointer: { x: number; y: number } | null, controls: Controls, shapes: Shape[], viewBox: ViewBox) => PresetState;
   shapeTransform: (shape: Shape, state: PresetState, pointer: { x: number; y: number } | null, controls: Controls, viewBox: ViewBox) => ShapeTransform;
 }> = {
   // -------------------------------------------------------------------------
@@ -340,7 +340,7 @@ const PRESETS: Record<PresetKey, {
       };
       return { ...state, bubbles: [...state.bubbles, newBubble], clickPoint: point, clickTime: 0 };
     },
-    update: (state, dt, _pointer, controls) => {
+    update: (state, dt, _pointer, controls, _shapes, _viewBox) => {
       const newBubbles: Bubble[] = [];
       const toSpawn: Bubble[] = [];
 
@@ -468,7 +468,7 @@ const PRESETS: Record<PresetKey, {
         returnStartTime: 0,
       };
     },
-    update: (state, dt, _pointer, controls, shapes) => {
+    update: (state, dt, _pointer, controls, shapes, viewBox) => {
       const newClickTime = state.clickTime + dt;
       const returnDelay = controls.settleTime * 0.6; // Time before spring-back starts
       
@@ -486,23 +486,26 @@ const PRESETS: Record<PresetKey, {
       if (state.clickPoint && state.shapeVelocities.size === 0) {
         const velocities = new Map<string, { vx: number; vy: number; vr: number }>();
         shapes.forEach(shape => {
-          // Calculate angle from click point to shape centroid
-          const shapeNormX = shape.centroid.x / 1312; // Assuming standard viewBox
-          const shapeNormY = shape.centroid.y / 312;
+          // Calculate angle from click point to shape centroid (in normalized space)
+          const shapeNormX = shape.centroid.x / viewBox.width;
+          const shapeNormY = shape.centroid.y / viewBox.height;
           const angleFromClick = Math.atan2(
             shapeNormY - state.clickPoint!.y, 
             shapeNormX - state.clickPoint!.x
           );
           const distFromClick = distance(shapeNormX, shapeNormY, state.clickPoint!.x, state.clickPoint!.y);
           
-          // Closer shapes get more impulse (inverse distance)
-          const impulseMultiplier = Math.max(0.3, 1 - distFromClick);
-          const speed = controls.shardSpread * impulseMultiplier * (0.7 + seededRandom(parseInt(shape.id.split('-')[1]) || 0) * 0.6);
+          // Closer shapes get MORE impulse (glass shatters more at impact point)
+          const impulseMultiplier = Math.max(0.5, 1.5 - distFromClick * 2);
+          const baseSpeed = controls.shardSpread * controls.clickStrength * impulseMultiplier;
+          const seed = parseInt(shape.id.split('-')[1]) || 0;
+          const randomVariation = 0.7 + seededRandom(seed) * 0.6;
           
+          // Scale to viewBox dimensions for visible movement
           velocities.set(shape.id, {
-            vx: Math.cos(angleFromClick) * speed * 80,
-            vy: Math.sin(angleFromClick) * speed * 80,
-            vr: (seededRandom((parseInt(shape.id.split('-')[1]) || 0) * 47) - 0.5) * 40,
+            vx: Math.cos(angleFromClick) * baseSpeed * viewBox.width * 0.4 * randomVariation,
+            vy: Math.sin(angleFromClick) * baseSpeed * viewBox.height * 0.8 * randomVariation,
+            vr: (seededRandom(seed * 47) - 0.5) * 60 * controls.shardSpread,
           });
         });
         newState.shapeVelocities = velocities;
@@ -636,7 +639,7 @@ const PRESETS: Record<PresetKey, {
       }
       return { ...state, attractors, clickPoint: point, clickTime: 0, phase: 0 };
     },
-    update: (state, dt, _pointer, controls) => {
+    update: (state, dt, _pointer, controls, _shapes, _viewBox) => {
       const newPhase = state.phase + dt * controls.orbitRate;
       
       // Attractor orbiting motion
@@ -699,7 +702,7 @@ const PRESETS: Record<PresetKey, {
     initClick: (state, point, controls) => {
       return { ...state, clickPoint: point, clickTime: 0, phase: 0 };
     },
-    update: (state, dt, _pointer, controls) => {
+    update: (state, dt, _pointer, controls, _shapes, _viewBox) => {
       return { ...state, phase: state.phase + dt * controls.waveSpeed, clickTime: state.clickTime + dt };
     },
     shapeTransform: (shape, state, pointer, controls, viewBox) => {
@@ -860,7 +863,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       const preset = PRESETS[activePreset];
       
       // Update preset state
-      setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointer, controls, shapes));
+      setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointer, controls, shapes, viewBox));
       
       animationRef.current = requestAnimationFrame(animate);
     };
