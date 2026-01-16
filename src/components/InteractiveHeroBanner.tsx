@@ -522,20 +522,31 @@ const PRESETS: Record<PresetKey, {
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
+interface ControlPanelProps {
+  activePreset: PresetKey;
+  setActivePreset: (preset: PresetKey) => void;
+  controls: Controls;
+  updateControl: (key: keyof Controls, value: number) => void;
+  onReset: () => void;
+  isPaused: boolean;
+  setIsPaused: (paused: boolean) => void;
+}
+
 interface InteractiveHeroBannerProps {
   svgMarkup?: string;
   className?: string;
+  renderControls?: (props: ControlPanelProps) => React.ReactNode;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   svgMarkup = STARTER_SVG,
   className = '',
+  renderControls,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const [activePreset, setActivePreset] = useState<PresetKey>('bubble');
   const [isPaused, setIsPaused] = useState(false);
-  const [showControls, setShowControls] = useState(true);
   
   // Parse SVG
   const { shapes, viewBox } = useMemo(() => parseSVG(svgMarkup), [svgMarkup]);
@@ -737,129 +748,25 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         />
       </div>
 
-      {/* Control Panel - Bottom Center */}
-      {showControls && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 p-3 rounded-xl text-xs"
-          style={{
-            width: 'min(90%, 600px)',
-            background: 'rgba(255, 255, 255, 0.9)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(0, 0, 0, 0.06)',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-          }}
-        >
-          <div className="flex flex-wrap gap-4 items-start">
-            {/* Preset Selector */}
-            <div className="min-w-[120px]">
-              <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Preset</label>
-              <select
-                value={activePreset}
-                onChange={(e) => {
-                  setActivePreset(e.target.value as PresetKey);
-                  handleReset();
-                }}
-                className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-800 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-              >
-                {(Object.keys(PRESETS) as PresetKey[]).map(key => (
-                  <option key={key} value={key}>{PRESETS[key].name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Hover Controls */}
-            <div className="min-w-[140px] flex-1">
-              <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
-              <div className="space-y-1">
-                <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControl('hoverStrength', v)} min={0} max={3} />
-                <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControl('hoverRadius', v)} min={0.1} max={1} />
-              </div>
-            </div>
-
-            {/* Click Controls */}
-            <div className="min-w-[140px] flex-1">
-              <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Click</label>
-              <div className="space-y-1">
-                <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControl('spring', v)} min={0.1} max={2} />
-                <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControl('damping', v)} min={0.1} max={2} />
-              </div>
-            </div>
-
-            {/* Preset-specific controls */}
-            <div className="min-w-[140px] flex-1">
-              <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">
-                {PRESETS[activePreset].name}
-              </label>
-              <div className="space-y-1">
-                {activePreset === 'bubble' && (
-                  <>
-                    <ControlSlider label="Impulse" value={controls.popImpulse} onChange={(v) => updateControl('popImpulse', v)} min={0.1} max={3} />
-                    <ControlSlider label="Softness" value={controls.bubbleSoftness} onChange={(v) => updateControl('bubbleSoftness', v)} min={0.1} max={2} />
-                  </>
-                )}
-                {activePreset === 'voronoi' && (
-                  <>
-                    <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControl('shardSpread', v)} min={0.1} max={3} />
-                    <ControlSlider label="Return" value={controls.returnSpring} onChange={(v) => updateControl('returnSpring', v)} min={0.5} max={4} />
-                  </>
-                )}
-                {activePreset === 'magnetic' && (
-                  <>
-                    <ControlSlider label="Strength" value={controls.fieldStrength} onChange={(v) => updateControl('fieldStrength', v)} min={0.1} max={3} />
-                    <ControlSlider label="Orbit" value={controls.orbitRate} onChange={(v) => updateControl('orbitRate', v)} min={0.1} max={4} />
-                  </>
-                )}
-                {activePreset === 'wave' && (
-                  <>
-                    <ControlSlider label="Frequency" value={controls.waveFrequency} onChange={(v) => updateControl('waveFrequency', v)} min={0.5} max={5} />
-                    <ControlSlider label="Speed" value={controls.waveSpeed} onChange={(v) => updateControl('waveSpeed', v)} min={0.1} max={3} />
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex flex-col gap-1.5 min-w-[70px]">
-              <button
-                onClick={handleReset}
-                className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
-              >
-                Reset
-              </button>
-              <button
-                onClick={() => setIsPaused(p => !p)}
-                className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
-              >
-                {isPaused ? 'Play' : 'Pause'}
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Toggle controls button */}
-      <button
-        onClick={() => setShowControls(p => !p)}
-        className="absolute top-3 left-3 w-8 h-8 rounded-lg flex items-center justify-center text-neutral-500 hover:text-neutral-700 transition-colors"
-        style={{
-          background: 'rgba(255, 255, 255, 0.85)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(0, 0, 0, 0.06)',
-        }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-      </button>
+      {/* Render external controls if provided */}
+      {renderControls && renderControls({
+        activePreset,
+        setActivePreset: (preset) => {
+          setActivePreset(preset);
+          handleReset();
+        },
+        controls,
+        updateControl,
+        onReset: handleReset,
+        isPaused,
+        setIsPaused,
+      })}
     </div>
   );
 };
 
 // ============================================================================
-// CONTROL SLIDER COMPONENT
+// CONTROL SLIDER COMPONENT (exported for external use)
 // ============================================================================
 interface ControlSliderProps {
   label: string;
@@ -870,7 +777,7 @@ interface ControlSliderProps {
   step?: number;
 }
 
-const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onChange, min, max, step = 0.1 }) => (
+export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onChange, min, max, step = 0.1 }) => (
   <div className="flex items-center gap-2">
     <span className="w-16 text-neutral-600 text-[10px]">{label}</span>
     <input
@@ -887,4 +794,13 @@ const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onChange, m
   </div>
 );
 
+// Export preset info for external control panels
+export const PRESET_INFO: Record<PresetKey, { name: string; description: string }> = {
+  bubble: { name: 'Bubble', description: 'Pop & multiply bubbles in water' },
+  voronoi: { name: 'Voronoi Shatter', description: 'Fracture into cells, then re-cohere' },
+  magnetic: { name: 'Magnetic Field', description: 'Shapes orbit along field lines' },
+  wave: { name: 'Wave Interference', description: 'Scanning interference patterns' },
+};
+
+export type { PresetKey, Controls, ControlPanelProps };
 export default InteractiveHeroBanner;
