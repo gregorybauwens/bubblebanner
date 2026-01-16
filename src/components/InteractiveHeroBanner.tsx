@@ -715,7 +715,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             shatteredShapeIds: shatteredIds,
             clickPoint: point,
             lastClickTime: prev.clickTime,
-            isReturning: false,
+            isReturning: false, // Reset settling state so new fragments can explode
+            returnStartTime: 0, // Reset timer so settling delay restarts
           };
         });
         return;
