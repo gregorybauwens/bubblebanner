@@ -53,25 +53,9 @@ interface ViewBox {
   height: number;
 }
 
-type PresetKey = 'bubble' | 'voronoi' | 'magnetic' | 'wave';
+type PresetKey = 'voronoi';
 
-interface Bubble {
-  id: number;
-  x: number;
-  y: number;
-  radius: number;
-  age: number;
-  strength: number;
-  popped: boolean;
-  children: number[];
-}
-
-interface Attractor {
-  x: number;
-  y: number;
-  strength: number;
-  phase: number;
-}
+// Fragment tracks each piece after shattering
 
 // Fragment tracks each piece after shattering
 interface ShardFragment {
@@ -90,12 +74,8 @@ interface ShardFragment {
 }
 
 interface PresetState {
-  bubbles: Bubble[];
-  attractors: Attractor[];
   clickPoint: { x: number; y: number } | null;
   clickTime: number;
-  phase: number;
-  shapeVelocities: Map<string, { vx: number; vy: number; vr: number }>;
   // Voronoi shatter state - fragments replace original shapes
   shardFragments: ShardFragment[];
   shatteredShapeIds: Set<string>; // Track which original shapes have been shattered
@@ -117,31 +97,14 @@ interface ShapeTransform {
 interface Controls {
   hoverStrength: number;
   hoverRadius: number;
-  hoverDamping: number;
   clickStrength: number;
-  clickRadius: number;
   spring: number;
   damping: number;
-  revealRate: number;
   timeScale: number;
-  // Bubble specific
-  popImpulse: number;
-  bubbleCount: number;
-  splitDelay: number;
-  bubbleSoftness: number;
   // Voronoi specific
   shardSpread: number;
-  turbulence: number;
   settleTime: number;
   returnSpring: number;
-  // Magnetic specific
-  attractorCount: number;
-  fieldStrength: number;
-  orbitRate: number;
-  // Wave specific
-  waveFrequency: number;
-  waveSpeed: number;
-  bandContrast: number;
 }
 
 // ============================================================================
@@ -424,12 +387,8 @@ const createFragmentsFromShape = (
 // PRESET ENGINE
 // ============================================================================
 const createInitialState = (): PresetState => ({
-  bubbles: [],
-  attractors: [],
   clickPoint: null,
   clickTime: 0,
-  phase: 0,
-  shapeVelocities: new Map(),
   shardFragments: [],
   shatteredShapeIds: new Set(),
   isReturning: false,
@@ -445,106 +404,7 @@ const PRESETS: Record<PresetKey, {
   shapeTransform: (shape: Shape, state: PresetState, pointer: { x: number; y: number } | null, controls: Controls, viewBox: ViewBox) => ShapeTransform;
 }> = {
   // -------------------------------------------------------------------------
-  // PRESET A: BUBBLE
-  // -------------------------------------------------------------------------
-  bubble: {
-    name: 'Bubble',
-    description: 'Pop & multiply bubbles in water',
-    initClick: (state, point, controls) => {
-      const newBubble: Bubble = {
-        id: Date.now(),
-        x: point.x,
-        y: point.y,
-        radius: controls.clickRadius * 0.5,
-        age: 0,
-        strength: controls.popImpulse,
-        popped: false,
-        children: [],
-      };
-      return { ...state, bubbles: [...state.bubbles, newBubble], clickPoint: point, clickTime: 0 };
-    },
-    update: (state, dt, _pointer, controls, _shapes, _viewBox) => {
-      const newBubbles: Bubble[] = [];
-      const toSpawn: Bubble[] = [];
-
-      state.bubbles.forEach(bubble => {
-        bubble.age += dt;
-        bubble.radius += dt * 20 * controls.bubbleSoftness;
-        bubble.strength *= 0.98;
-
-        // Pop and split after delay
-        if (!bubble.popped && bubble.age > controls.splitDelay) {
-          bubble.popped = true;
-          bubble.strength *= 0.5;
-          
-          // Spawn child bubbles
-          const childCount = Math.min(controls.bubbleCount, 4);
-          for (let i = 0; i < childCount; i++) {
-            const angle = (Math.PI * 2 * i) / childCount + seededRandom(bubble.id + i) * 0.5;
-            toSpawn.push({
-              id: Date.now() + i,
-              x: bubble.x + Math.cos(angle) * bubble.radius * 0.5,
-              y: bubble.y + Math.sin(angle) * bubble.radius * 0.5,
-              radius: bubble.radius * 0.4,
-              age: 0,
-              strength: bubble.strength * 0.6,
-              popped: true,
-              children: [],
-            });
-          }
-        }
-
-        // Drift with noise
-        bubble.x += noise2D(bubble.age * 0.5, bubble.id) * dt * 10;
-        bubble.y += noise2D(bubble.id, bubble.age * 0.5) * dt * 10;
-
-        // Keep alive if still has influence
-        if (bubble.strength > 0.01 && bubble.age < 5) {
-          newBubbles.push(bubble);
-        }
-      });
-
-      return { ...state, bubbles: [...newBubbles, ...toSpawn] };
-    },
-    shapeTransform: (shape, state, pointer, controls, viewBox) => {
-      let x = 0, y = 0, scale = 1, brightness = 1;
-      const cx = shape.centroid.x;
-      const cy = shape.centroid.y;
-
-      // Only apply bubble influence if bubbles exist (after click)
-      if (state.bubbles.length > 0) {
-        state.bubbles.forEach(bubble => {
-          const dist = distance(cx, cy, bubble.x * viewBox.width, bubble.y * viewBox.height);
-          const influence = Math.max(0, 1 - dist / (bubble.radius * viewBox.width * 2)) * bubble.strength;
-          
-          if (influence > 0) {
-            const angle = Math.atan2(cy - bubble.y * viewBox.height, cx - bubble.x * viewBox.width);
-            x += Math.cos(angle) * influence * 15 * controls.bubbleSoftness;
-            y += Math.sin(angle) * influence * 15 * controls.bubbleSoftness;
-            scale += influence * 0.1;
-            brightness += influence * 0.2;
-          }
-        });
-      }
-
-      // Hover effect - only when pointer is present
-      if (pointer) {
-        const hoverDist = distance(cx / viewBox.width, cy / viewBox.height, pointer.x, pointer.y);
-        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength * 0.02;
-        x += (pointer.x * viewBox.width - cx) * hoverInfluence * 0.3;
-        y += (pointer.y * viewBox.height - cy) * hoverInfluence * 0.3;
-        brightness += hoverInfluence * 0.5;
-      }
-
-      // Constrain to container bounds
-      const constrained = constrainToBounds(shape, x, y, clamp(scale, 0.8, 1.3), viewBox);
-
-      return { x: constrained.x, y: constrained.y, scale: clamp(scale, 0.8, 1.3), rotate: 0, opacity: 1, filterStrength: 0, brightness: clamp(brightness, 0.9, 1.4) };
-    },
-  },
-
-  // -------------------------------------------------------------------------
-  // PRESET B: VORONOI SHATTER
+  // VORONOI SHATTER
   // Click on a shape to shatter it into pieces. Click pieces to shatter further.
   // After a delay, all pieces spring back together.
   // -------------------------------------------------------------------------
@@ -579,18 +439,10 @@ const PRESETS: Record<PresetKey, {
       
       // Update fragment physics
       const updatedFragments = state.shardFragments.map(frag => {
-        const fragAge = newClickTime - frag.spawnTime;
-        
         if (state.isReturning) {
           // Spring back to original position
-          const returnT = newClickTime - state.returnStartTime;
           const springForce = controls.returnSpring * 4;
           const damping = 0.85;
-          
-          // Calculate target position (original shape position)
-          const targetX = 0;
-          const targetY = 0;
-          const targetRot = 0;
           
           const newVx = frag.vx * damping - frag.offsetX * springForce * dt * 60;
           const newVy = frag.vy * damping - frag.offsetY * springForce * dt * 60;
@@ -667,132 +519,6 @@ const PRESETS: Record<PresetKey, {
       };
     },
   },
-
-  // -------------------------------------------------------------------------
-  // PRESET C: MAGNETIC FIELD LINES
-  // -------------------------------------------------------------------------
-  magnetic: {
-    name: 'Magnetic Field',
-    description: 'Shapes orbit along field lines',
-    initClick: (state, point, controls) => {
-      const attractors: Attractor[] = [];
-      const count = controls.attractorCount;
-      for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count + seededRandom(i * 13) * 0.5;
-        const dist = 0.15 + seededRandom(i * 29) * 0.15;
-        attractors.push({
-          x: point.x + Math.cos(angle) * dist,
-          y: point.y + Math.sin(angle) * dist,
-          strength: controls.fieldStrength * (0.7 + seededRandom(i * 41) * 0.6),
-          phase: seededRandom(i * 53) * Math.PI * 2,
-        });
-      }
-      return { ...state, attractors, clickPoint: point, clickTime: 0, phase: 0 };
-    },
-    update: (state, dt, _pointer, controls, _shapes, _viewBox) => {
-      const newPhase = state.phase + dt * controls.orbitRate;
-      
-      // Attractor orbiting motion
-      const newAttractors = state.attractors.map((a, i) => ({
-        ...a,
-        phase: a.phase + dt * controls.orbitRate * (0.5 + seededRandom(i) * 0.5),
-      }));
-
-      return { ...state, attractors: newAttractors, phase: newPhase, clickTime: state.clickTime + dt };
-    },
-    shapeTransform: (shape, state, pointer, controls, viewBox) => {
-      let x = 0, y = 0, rotate = 0;
-      const cx = shape.centroid.x / viewBox.width;
-      const cy = shape.centroid.y / viewBox.height;
-
-      // Attractor influence - only when attractors exist (after click)
-      if (state.attractors.length > 0) {
-        state.attractors.forEach(attractor => {
-          const dx = attractor.x - cx;
-          const dy = attractor.y - cy;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const influence = attractor.strength / (dist + 0.1);
-          
-          // Tangential force (orbiting)
-          const tangentX = -dy * influence * 15;
-          const tangentY = dx * influence * 15;
-          
-          // Decay over time
-          const decay = Math.exp(-state.clickTime * controls.damping * 0.3);
-          x += tangentX * Math.sin(attractor.phase) * decay;
-          y += tangentY * Math.cos(attractor.phase) * decay;
-          rotate += influence * 5 * Math.sin(attractor.phase * 2) * decay;
-        });
-      }
-
-      // Hover: gentle lean toward pointer - only when pointer is present
-      if (pointer) {
-        const hoverDist = distance(cx, cy, pointer.x, pointer.y);
-        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
-        const angle = Math.atan2(pointer.y - cy, pointer.x - cx);
-        rotate += Math.sin(angle) * hoverInfluence * 15;
-        // Pull shapes toward pointer with viewBox-scaled movement
-        x += (pointer.x - cx) * hoverInfluence * viewBox.width * 0.08;
-        y += (pointer.y - cy) * hoverInfluence * viewBox.height * 0.08;
-      }
-
-      // Constrain to container bounds
-      const constrained = constrainToBounds(shape, x, y, 1, viewBox);
-
-      return { x: constrained.x, y: constrained.y, scale: 1, rotate, opacity: 1, filterStrength: 0, brightness: 1 };
-    },
-  },
-
-  // -------------------------------------------------------------------------
-  // PRESET D: WAVE INTERFERENCE SCAN
-  // -------------------------------------------------------------------------
-  wave: {
-    name: 'Wave Interference',
-    description: 'Scanning interference patterns',
-    initClick: (state, point, controls) => {
-      return { ...state, clickPoint: point, clickTime: 0, phase: 0 };
-    },
-    update: (state, dt, _pointer, controls, _shapes, _viewBox) => {
-      return { ...state, phase: state.phase + dt * controls.waveSpeed, clickTime: state.clickTime + dt };
-    },
-    shapeTransform: (shape, state, pointer, controls, viewBox) => {
-      let x = 0, y = 0, opacity = 1, brightness = 1;
-      const cx = shape.centroid.x / viewBox.width;
-      const cy = shape.centroid.y / viewBox.height;
-
-      // Wave interference pattern - only after click
-      if (state.clickPoint && state.clickTime > 0) {
-        const shapePhase = cx * controls.waveFrequency + cy * controls.waveFrequency * 0.5;
-        const wave = Math.sin(state.phase * 5 + shapePhase * 10);
-        const interference = Math.sin(state.phase * 3 - shapePhase * 7);
-        
-        const combined = (wave + interference) * 0.5 * controls.bandContrast;
-        x = combined * 8;
-        y = Math.cos(state.phase * 2 + shapePhase * 5) * combined * 4;
-        
-        // Fade effect based on wave
-        const revealWave = Math.sin(state.phase * controls.revealRate + shapePhase * 3);
-        opacity = clamp(0.7 + revealWave * 0.3, 0.5, 1);
-        brightness = 1 + combined * 0.15;
-      }
-
-      // Hover: scanning band effect - only when pointer is present
-      if (pointer) {
-        const scanDist = Math.abs(cx - pointer.x);
-        const bandInfluence = Math.exp(-scanDist * scanDist * 30) * controls.hoverStrength;
-        // Vertical wave effect near pointer
-        y += bandInfluence * 8;
-        brightness += bandInfluence * 0.3;
-        // Also add subtle horizontal pull toward pointer
-        x += (pointer.x - cx) * bandInfluence * viewBox.width * 0.03;
-      }
-
-      // Constrain to container bounds
-      const constrained = constrainToBounds(shape, x, y, 1, viewBox);
-
-      return { x: constrained.x, y: constrained.y, scale: 1, rotate: 0, opacity, filterStrength: 0, brightness: clamp(brightness, 0.8, 1.3) };
-    },
-  },
 };
 
 // ============================================================================
@@ -800,7 +526,6 @@ const PRESETS: Record<PresetKey, {
 // ============================================================================
 interface ControlPanelProps {
   activePreset: PresetKey;
-  setActivePreset: (preset: PresetKey) => void;
   controls: Controls;
   updateControl: (key: keyof Controls, value: number) => void;
   onReset: () => void;
@@ -821,7 +546,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [activePreset, setActivePreset] = useState<PresetKey>('bubble');
+  const [activePreset] = useState<PresetKey>('voronoi');
   const [isPaused, setIsPaused] = useState(false);
   
   // Parse SVG
@@ -831,27 +556,13 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const [controls, setControls] = useState<Controls>({
     hoverStrength: 1,
     hoverRadius: 0.3,
-    hoverDamping: 0.1,
     clickStrength: 1,
-    clickRadius: 0.2,
     spring: 0.3,
     damping: 0.5,
-    revealRate: 1,
     timeScale: 1,
-    popImpulse: 1,
-    bubbleCount: 3,
-    splitDelay: 0.3,
-    bubbleSoftness: 1,
     shardSpread: 1,
-    turbulence: 0.5,
     settleTime: 2,
     returnSpring: 1.5,
-    attractorCount: 3,
-    fieldStrength: 1,
-    orbitRate: 1,
-    waveFrequency: 2,
-    waveSpeed: 1,
-    bandContrast: 1,
   });
 
   // Animation state
@@ -1182,10 +893,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       {/* Render external controls if provided */}
       {renderControls && renderControls({
         activePreset,
-        setActivePreset: (preset) => {
-          setActivePreset(preset);
-          handleReset();
-        },
         controls,
         updateControl,
         onReset: handleReset,
@@ -1227,10 +934,7 @@ export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onCh
 
 // Export preset info for external control panels
 export const PRESET_INFO: Record<PresetKey, { name: string; description: string }> = {
-  bubble: { name: 'Bubble', description: 'Pop & multiply bubbles in water' },
-  voronoi: { name: 'Voronoi Shatter', description: 'Fracture into cells, then re-cohere' },
-  magnetic: { name: 'Magnetic Field', description: 'Shapes orbit along field lines' },
-  wave: { name: 'Wave Interference', description: 'Scanning interference patterns' },
+  voronoi: { name: 'Voronoi Shatter', description: 'Click shapes to shatter them into pieces' },
 };
 
 export type { PresetKey, Controls, ControlPanelProps };
