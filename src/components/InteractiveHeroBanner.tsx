@@ -449,10 +449,13 @@ const PRESETS: Record<PresetKey, {
 
       // Hover parallax - only when pointer is present
       if (pointer) {
-        const hoverDist = distance(shape.centroid.x / viewBox.width, shape.centroid.y / viewBox.height, pointer.x, pointer.y);
-        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength * 0.01;
-        x += (pointer.x - 0.5) * hoverInfluence * 20;
-        y += (pointer.y - 0.5) * hoverInfluence * 20;
+        const shapeNormX = shape.centroid.x / viewBox.width;
+        const shapeNormY = shape.centroid.y / viewBox.height;
+        const hoverDist = distance(shapeNormX, shapeNormY, pointer.x, pointer.y);
+        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
+        // Pull shapes toward pointer with viewBox-scaled movement
+        x += (pointer.x - shapeNormX) * hoverInfluence * viewBox.width * 0.05;
+        y += (pointer.y - shapeNormY) * hoverInfluence * viewBox.height * 0.05;
       }
 
       // Constrain to container bounds
@@ -521,12 +524,13 @@ const PRESETS: Record<PresetKey, {
 
       // Hover: gentle lean toward pointer - only when pointer is present
       if (pointer) {
-        const angle = Math.atan2(pointer.y - cy, pointer.x - cx);
         const hoverDist = distance(cx, cy, pointer.x, pointer.y);
-        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength * 0.015;
-        rotate += Math.sin(angle) * hoverInfluence * 10;
-        x += Math.cos(angle) * hoverInfluence * 5;
-        y += Math.sin(angle) * hoverInfluence * 5;
+        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
+        const angle = Math.atan2(pointer.y - cy, pointer.x - cx);
+        rotate += Math.sin(angle) * hoverInfluence * 15;
+        // Pull shapes toward pointer with viewBox-scaled movement
+        x += (pointer.x - cx) * hoverInfluence * viewBox.width * 0.08;
+        y += (pointer.y - cy) * hoverInfluence * viewBox.height * 0.08;
       }
 
       // Constrain to container bounds
@@ -571,11 +575,13 @@ const PRESETS: Record<PresetKey, {
 
       // Hover: scanning band effect - only when pointer is present
       if (pointer) {
-        const pointerPhase = pointer.x * 10 + (state.clickPoint ? state.phase * 2 : 0);
         const scanDist = Math.abs(cx - pointer.x);
-        const bandInfluence = Math.exp(-scanDist * scanDist * 50) * controls.hoverStrength * 0.02;
-        brightness += bandInfluence * 0.3 * Math.sin(pointerPhase);
-        y += bandInfluence * 3 * Math.cos(pointerPhase * 0.5);
+        const bandInfluence = Math.exp(-scanDist * scanDist * 30) * controls.hoverStrength;
+        // Vertical wave effect near pointer
+        y += bandInfluence * 8;
+        brightness += bandInfluence * 0.3;
+        // Also add subtle horizontal pull toward pointer
+        x += (pointer.x - cx) * bandInfluence * viewBox.width * 0.03;
       }
 
       // Constrain to container bounds
