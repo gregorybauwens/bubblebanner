@@ -316,21 +316,23 @@ const PRESETS: Record<PresetKey, {
       const cx = shape.centroid.x;
       const cy = shape.centroid.y;
 
-      // Bubble influence
-      state.bubbles.forEach(bubble => {
-        const dist = distance(cx, cy, bubble.x * viewBox.width, bubble.y * viewBox.height);
-        const influence = Math.max(0, 1 - dist / (bubble.radius * viewBox.width * 2)) * bubble.strength;
-        
-        if (influence > 0) {
-          const angle = Math.atan2(cy - bubble.y * viewBox.height, cx - bubble.x * viewBox.width);
-          x += Math.cos(angle) * influence * 15 * controls.bubbleSoftness;
-          y += Math.sin(angle) * influence * 15 * controls.bubbleSoftness;
-          scale += influence * 0.1;
-          brightness += influence * 0.2;
-        }
-      });
+      // Only apply bubble influence if bubbles exist (after click)
+      if (state.bubbles.length > 0) {
+        state.bubbles.forEach(bubble => {
+          const dist = distance(cx, cy, bubble.x * viewBox.width, bubble.y * viewBox.height);
+          const influence = Math.max(0, 1 - dist / (bubble.radius * viewBox.width * 2)) * bubble.strength;
+          
+          if (influence > 0) {
+            const angle = Math.atan2(cy - bubble.y * viewBox.height, cx - bubble.x * viewBox.width);
+            x += Math.cos(angle) * influence * 15 * controls.bubbleSoftness;
+            y += Math.sin(angle) * influence * 15 * controls.bubbleSoftness;
+            scale += influence * 0.1;
+            brightness += influence * 0.2;
+          }
+        });
+      }
 
-      // Hover effect
+      // Hover effect - only when pointer is present
       if (pointer) {
         const hoverDist = distance(cx / viewBox.width, cy / viewBox.height, pointer.x, pointer.y);
         const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength * 0.02;
@@ -377,6 +379,7 @@ const PRESETS: Record<PresetKey, {
       let x = 0, y = 0, scale = 1, rotate = 0;
       const filterStrength = controls.turbulence;
 
+      // Only apply shatter effect after click
       if (state.clickPoint && state.clickTime > 0) {
         const vel = state.shapeVelocities.get(shape.id);
         if (vel) {
@@ -391,7 +394,7 @@ const PRESETS: Record<PresetKey, {
         }
       }
 
-      // Hover parallax
+      // Hover parallax - only when pointer is present
       if (pointer) {
         const hoverDist = distance(shape.centroid.x / viewBox.width, shape.centroid.y / viewBox.height, pointer.x, pointer.y);
         const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength * 0.01;
@@ -440,25 +443,27 @@ const PRESETS: Record<PresetKey, {
       const cx = shape.centroid.x / viewBox.width;
       const cy = shape.centroid.y / viewBox.height;
 
-      // Attractor influence
-      state.attractors.forEach(attractor => {
-        const dx = attractor.x - cx;
-        const dy = attractor.y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const influence = attractor.strength / (dist + 0.1);
-        
-        // Tangential force (orbiting)
-        const tangentX = -dy * influence * 15;
-        const tangentY = dx * influence * 15;
-        
-        // Decay over time
-        const decay = Math.exp(-state.clickTime * controls.damping * 0.3);
-        x += tangentX * Math.sin(attractor.phase) * decay;
-        y += tangentY * Math.cos(attractor.phase) * decay;
-        rotate += influence * 5 * Math.sin(attractor.phase * 2) * decay;
-      });
+      // Attractor influence - only when attractors exist (after click)
+      if (state.attractors.length > 0) {
+        state.attractors.forEach(attractor => {
+          const dx = attractor.x - cx;
+          const dy = attractor.y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const influence = attractor.strength / (dist + 0.1);
+          
+          // Tangential force (orbiting)
+          const tangentX = -dy * influence * 15;
+          const tangentY = dx * influence * 15;
+          
+          // Decay over time
+          const decay = Math.exp(-state.clickTime * controls.damping * 0.3);
+          x += tangentX * Math.sin(attractor.phase) * decay;
+          y += tangentY * Math.cos(attractor.phase) * decay;
+          rotate += influence * 5 * Math.sin(attractor.phase * 2) * decay;
+        });
+      }
 
-      // Hover: gentle lean toward pointer
+      // Hover: gentle lean toward pointer - only when pointer is present
       if (pointer) {
         const angle = Math.atan2(pointer.y - cy, pointer.x - cx);
         const hoverDist = distance(cx, cy, pointer.x, pointer.y);
@@ -489,8 +494,8 @@ const PRESETS: Record<PresetKey, {
       const cx = shape.centroid.x / viewBox.width;
       const cy = shape.centroid.y / viewBox.height;
 
-      // Wave interference pattern
-      if (state.clickTime > 0) {
+      // Wave interference pattern - only after click
+      if (state.clickPoint && state.clickTime > 0) {
         const shapePhase = cx * controls.waveFrequency + cy * controls.waveFrequency * 0.5;
         const wave = Math.sin(state.phase * 5 + shapePhase * 10);
         const interference = Math.sin(state.phase * 3 - shapePhase * 7);
@@ -505,9 +510,9 @@ const PRESETS: Record<PresetKey, {
         brightness = 1 + combined * 0.15;
       }
 
-      // Hover: scanning band effect
+      // Hover: scanning band effect - only when pointer is present
       if (pointer) {
-        const pointerPhase = pointer.x * 10 + state.phase * 2;
+        const pointerPhase = pointer.x * 10 + (state.clickPoint ? state.phase * 2 : 0);
         const scanDist = Math.abs(cx - pointer.x);
         const bandInfluence = Math.exp(-scanDist * scanDist * 50) * controls.hoverStrength * 0.02;
         brightness += bandInfluence * 0.3 * Math.sin(pointerPhase);
