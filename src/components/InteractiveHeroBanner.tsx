@@ -1067,7 +1067,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           })}
           
           {/* Render glass crack lines */}
-          {activePreset === 'voronoi' && presetState.crackLines.map((crack) => {
+          {activePreset === 'voronoi' && (presetState.crackLines || []).map((crack) => {
             const elapsed = presetState.clickTime - crack.spawnTime;
             const fadeOutStart = 0.4;
             const fadeOutDuration = 0.4;
