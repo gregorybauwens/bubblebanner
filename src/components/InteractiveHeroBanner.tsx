@@ -438,21 +438,82 @@ const PRESETS: Record<PresetKey, {
         returnStartTime: shouldStartSettling ? newClickTime : state.returnStartTime,
       };
       
-      // Calculate grid positions for fragments when settling
+      // Calculate grid with 16px gutters for settling
+      const gutter = 16;
       const fragmentCount = state.shardFragments.length;
       const cols = Math.ceil(Math.sqrt(fragmentCount * (viewBox.width / viewBox.height)));
       const rows = Math.ceil(fragmentCount / cols);
-      const cellWidth = viewBox.width / cols;
-      const cellHeight = viewBox.height / rows;
+      const cellWidth = (viewBox.width - gutter * (cols + 1)) / cols;
+      const cellHeight = (viewBox.height - gutter * (rows + 1)) / rows;
+      
+      // Assign each fragment to nearest grid cell based on current position
+      // First pass: calculate current positions and find nearest grid cell
+      const gridAssignments = new Map<string, number>(); // "col,row" -> fragmentIndex
+      const fragmentGridTargets: { col: number; row: number }[] = [];
+      
+      // Calculate which grid cell each fragment is closest to
+      state.shardFragments.forEach((frag, index) => {
+        const currentX = frag.shape.centroid.x + frag.offsetX;
+        const currentY = frag.shape.centroid.y + frag.offsetY;
+        
+        // Find nearest grid cell
+        let bestCol = Math.round((currentX - gutter - cellWidth / 2) / (cellWidth + gutter));
+        let bestRow = Math.round((currentY - gutter - cellHeight / 2) / (cellHeight + gutter));
+        
+        // Clamp to valid range
+        bestCol = Math.max(0, Math.min(cols - 1, bestCol));
+        bestRow = Math.max(0, Math.min(rows - 1, bestRow));
+        
+        fragmentGridTargets[index] = { col: bestCol, row: bestRow };
+      });
+      
+      // Resolve conflicts - if multiple fragments want the same cell, use spiral search
+      const occupiedCells = new Set<string>();
+      const finalTargets: { col: number; row: number }[] = [];
+      
+      fragmentGridTargets.forEach((target, index) => {
+        let { col, row } = target;
+        const key = `${col},${row}`;
+        
+        if (!occupiedCells.has(key)) {
+          occupiedCells.add(key);
+          finalTargets[index] = { col, row };
+        } else {
+          // Spiral search for nearest free cell
+          let found = false;
+          for (let radius = 1; radius < Math.max(cols, rows) && !found; radius++) {
+            for (let dc = -radius; dc <= radius && !found; dc++) {
+              for (let dr = -radius; dr <= radius && !found; dr++) {
+                if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue;
+                const newCol = col + dc;
+                const newRow = row + dr;
+                if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows) {
+                  const newKey = `${newCol},${newRow}`;
+                  if (!occupiedCells.has(newKey)) {
+                    occupiedCells.add(newKey);
+                    finalTargets[index] = { col: newCol, row: newRow };
+                    found = true;
+                  }
+                }
+              }
+            }
+          }
+          // Fallback if no cell found
+          if (!found) {
+            finalTargets[index] = { col, row };
+          }
+        }
+      });
       
       // Update fragment physics
       const updatedFragments = state.shardFragments.map((frag, index) => {
         if (state.isReturning) {
-          // Settle onto grid - calculate target position
-          const col = index % cols;
-          const row = Math.floor(index / cols);
-          const targetX = (col + 0.5) * cellWidth - frag.shape.centroid.x;
-          const targetY = (row + 0.5) * cellHeight - frag.shape.centroid.y;
+          // Settle onto grid - calculate target position with gutters
+          const { col, row } = finalTargets[index] || { col: 0, row: 0 };
+          const targetCenterX = gutter + col * (cellWidth + gutter) + cellWidth / 2;
+          const targetCenterY = gutter + row * (cellHeight + gutter) + cellHeight / 2;
+          const targetX = targetCenterX - frag.shape.centroid.x;
+          const targetY = targetCenterY - frag.shape.centroid.y;
           
           // Spring towards grid position (not original position)
           const springForce = controls.returnSpring * 6;
