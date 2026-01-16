@@ -964,15 +964,19 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setControls(prev => ({ ...prev, [key]: value }));
   };
 
+  // Custom cursor SVG as data URI
+  const customCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='1'/%3E%3C/svg%3E") 10 10, crosshair`;
+
   return (
     <div className={`relative w-full ${className}`} style={{ maxWidth: 1312 }}>
       {/* Main Banner */}
       <div
         ref={containerRef}
-        className="relative w-full overflow-hidden rounded-2xl cursor-crosshair"
+        className="relative w-full overflow-hidden rounded-2xl"
         style={{ 
           aspectRatio: `${viewBox.width} / ${viewBox.height}`,
-          background: 'linear-gradient(135deg, hsl(45 10% 97%) 0%, hsl(40 15% 94%) 100%)',
+          background: 'linear-gradient(135deg, hsl(0 0% 8%) 0%, hsl(0 0% 12%) 100%)',
+          cursor: customCursor,
         }}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
@@ -1205,7 +1209,7 @@ interface ControlSliderProps {
 
 export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onChange, min, max, step = 0.1 }) => (
   <div className="flex items-center gap-2">
-    <span className="w-16 text-neutral-600 text-[10px]">{label}</span>
+    <span className="w-16 text-neutral-400 text-[10px]">{label}</span>
     <input
       type="range"
       min={min}
@@ -1213,7 +1217,7 @@ export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onCh
       step={step}
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="flex-1 h-1 bg-neutral-200 rounded-full appearance-none cursor-pointer accent-amber-500"
+      className="flex-1 h-1 bg-neutral-700 rounded-full appearance-none cursor-pointer"
       style={{ accentColor: '#ECB300' }}
     />
     <span className="w-8 text-right text-neutral-500 text-[10px] tabular-nums">{value.toFixed(1)}</span>

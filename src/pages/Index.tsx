@@ -14,18 +14,18 @@ const ControlPanel = ({
   <div 
     className="mt-6 p-4 rounded-xl text-xs"
     style={{
-      background: 'rgba(255, 255, 255, 0.9)',
+      background: 'rgba(15, 15, 15, 0.9)',
       backdropFilter: 'blur(12px)',
-      border: '1px solid rgba(0, 0, 0, 0.06)',
-      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
     }}
   >
     <div className="flex flex-wrap gap-6 items-start">
       {/* Info */}
       <div className="min-w-[160px] shrink-0">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Effect</label>
-        <p className="text-sm font-medium text-neutral-800">{PRESET_INFO.voronoi.name}</p>
-        <p className="text-[9px] text-neutral-400 mt-1">{PRESET_INFO.voronoi.description}</p>
+        <p className="text-sm font-medium text-neutral-200">{PRESET_INFO.voronoi.name}</p>
+        <p className="text-[9px] text-neutral-500 mt-1">{PRESET_INFO.voronoi.description}</p>
       </div>
 
       {/* Hover Controls */}
@@ -73,13 +73,13 @@ const ControlPanel = ({
       <div className="flex flex-col gap-2 min-w-[80px] shrink-0 ml-auto">
         <button
           onClick={onReset}
-          className="px-4 py-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
+          className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors border border-neutral-700"
         >
           Reset
         </button>
         <button
           onClick={() => setIsPaused(!isPaused)}
-          className="px-4 py-2 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] uppercase tracking-wider transition-colors"
+          className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors border border-neutral-700"
         >
           {isPaused ? 'Play' : 'Pause'}
         </button>
@@ -90,11 +90,11 @@ const ControlPanel = ({
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-stone-100 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-[#0f0f0f] flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-[1312px]">
         {/* Header */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-light tracking-tight text-neutral-800 mb-2">
+          <h1 className="text-3xl font-light tracking-tight text-neutral-200 mb-2">
             Interactive Hero Banner
           </h1>
           <p className="text-sm text-neutral-500">
