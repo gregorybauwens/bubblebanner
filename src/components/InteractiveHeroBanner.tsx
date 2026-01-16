@@ -85,6 +85,9 @@ interface CrackLine {
   delay: number;
   width: number;
   branches: CrackLine[];
+  // For clipping to shape
+  shapeBounds: { x: number; y: number; width: number; height: number };
+  shapeElement: string; // SVG element to use as clip path
 }
 
 interface PresetState {
@@ -436,6 +439,7 @@ const generateCrackLines = (
   clickX: number,
   clickY: number,
   bounds: { x: number; y: number; width: number; height: number },
+  shapeElement: string,
   currentTime: number,
   numCracks: number = 8
 ): CrackLine[] => {
@@ -464,6 +468,8 @@ const generateCrackLines = (
       delay: i * 0.02, // Stagger the cracks
       width: 2 + seededRandom(i * 13) * 1.5,
       branches: [],
+      shapeBounds: bounds,
+      shapeElement: shapeElement,
     };
     
     // Add 1-3 branches to each main crack
@@ -489,6 +495,8 @@ const generateCrackLines = (
         delay: i * 0.02 + branchT * 0.1,
         width: 1 + seededRandom(i * 89 + b * 31) * 1,
         branches: [],
+        shapeBounds: bounds,
+        shapeElement: shapeElement,
       });
     }
     
@@ -870,6 +878,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           crackClickX,
           crackClickY,
           shapeToFragment.bounds,
+          shapeToFragment.element,
           presetState.clickTime,
           6 + Math.floor(Math.random() * 4) // 6-9 cracks
         );
@@ -1032,6 +1041,99 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             );
           })}
           
+          {/* Render glass crack lines ON the shapes (clipped to shape bounds) */}
+          {activePreset === 'voronoi' && (presetState.crackLines || []).map((crack, crackIndex) => {
+            const elapsed = presetState.clickTime - crack.spawnTime;
+            const fadeOutStart = 0.3;
+            const fadeOutDuration = 0.25;
+            const opacity = elapsed > fadeOutStart 
+              ? Math.max(0, 1 - (elapsed - fadeOutStart) / fadeOutDuration)
+              : 1;
+            
+            if (opacity <= 0) return null;
+            
+            // Calculate animation progress for each crack
+            const crackProgress = Math.min(1, Math.max(0, (elapsed - crack.delay) / crack.duration));
+            const eased = 1 - Math.pow(1 - crackProgress, 3); // Ease out cubic
+            
+            const currentX2 = crack.x1 + (crack.x2 - crack.x1) * eased;
+            const currentY2 = crack.y1 + (crack.y2 - crack.y1) * eased;
+            
+            const clipId = `crack-clip-${crack.id}`;
+            
+            return (
+              <g key={crack.id}>
+                {/* Define clipPath using the shape */}
+                <defs>
+                  <clipPath id={clipId}>
+                    <g dangerouslySetInnerHTML={{ __html: crack.shapeElement }} />
+                  </clipPath>
+                </defs>
+                
+                {/* Crack lines clipped to shape */}
+                <g clipPath={`url(#${clipId})`} opacity={opacity}>
+                  {/* Dark crack line (shadow/depth) */}
+                  <line
+                    x1={crack.x1}
+                    y1={crack.y1}
+                    x2={currentX2}
+                    y2={currentY2}
+                    stroke="rgba(0, 0, 0, 0.5)"
+                    strokeWidth={crack.width + 1}
+                    strokeLinecap="round"
+                  />
+                  {/* Main white crack line */}
+                  <line
+                    x1={crack.x1}
+                    y1={crack.y1}
+                    x2={currentX2}
+                    y2={currentY2}
+                    stroke="rgba(255, 255, 255, 0.95)"
+                    strokeWidth={crack.width}
+                    strokeLinecap="round"
+                  />
+                  
+                  {/* Branch cracks */}
+                  {crack.branches.map((branch) => {
+                    const branchElapsed = elapsed;
+                    const branchProgress = Math.min(1, Math.max(0, (branchElapsed - branch.delay) / branch.duration));
+                    const branchEased = 1 - Math.pow(1 - branchProgress, 3);
+                    
+                    // Only show branch if main crack has reached it
+                    const mainReachedBranch = crackProgress >= 0.3;
+                    if (!mainReachedBranch) return null;
+                    
+                    const branchX2 = branch.x1 + (branch.x2 - branch.x1) * branchEased;
+                    const branchY2 = branch.y1 + (branch.y2 - branch.y1) * branchEased;
+                    
+                    return (
+                      <g key={branch.id}>
+                        <line
+                          x1={branch.x1}
+                          y1={branch.y1}
+                          x2={branchX2}
+                          y2={branchY2}
+                          stroke="rgba(0, 0, 0, 0.4)"
+                          strokeWidth={branch.width + 0.5}
+                          strokeLinecap="round"
+                        />
+                        <line
+                          x1={branch.x1}
+                          y1={branch.y1}
+                          x2={branchX2}
+                          y2={branchY2}
+                          stroke="rgba(255, 255, 255, 0.85)"
+                          strokeWidth={branch.width}
+                          strokeLinecap="round"
+                        />
+                      </g>
+                    );
+                  })}
+                </g>
+              </g>
+            );
+          })}
+          
           {/* Render voronoi fragments */}
           {activePreset === 'voronoi' && presetState.shardFragments.map((frag) => {
             const centerX = frag.shape.centroid.x;
@@ -1063,93 +1165,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
               >
                 <g dangerouslySetInnerHTML={{ __html: frag.shape.element }} />
               </motion.g>
-            );
-          })}
-          
-          {/* Render glass crack lines */}
-          {activePreset === 'voronoi' && (presetState.crackLines || []).map((crack) => {
-            const elapsed = presetState.clickTime - crack.spawnTime;
-            const fadeOutStart = 0.4;
-            const fadeOutDuration = 0.4;
-            const opacity = elapsed > fadeOutStart 
-              ? Math.max(0, 1 - (elapsed - fadeOutStart) / fadeOutDuration)
-              : 1;
-            
-            if (opacity <= 0) return null;
-            
-            // Calculate animation progress for each crack
-            const crackProgress = Math.min(1, Math.max(0, (elapsed - crack.delay) / crack.duration));
-            const eased = 1 - Math.pow(1 - crackProgress, 3); // Ease out cubic
-            
-            const currentX2 = crack.x1 + (crack.x2 - crack.x1) * eased;
-            const currentY2 = crack.y1 + (crack.y2 - crack.y1) * eased;
-            
-            return (
-              <g key={crack.id} opacity={opacity}>
-                {/* Main crack line */}
-                <line
-                  x1={crack.x1}
-                  y1={crack.y1}
-                  x2={currentX2}
-                  y2={currentY2}
-                  stroke="rgba(255, 255, 255, 0.9)"
-                  strokeWidth={crack.width}
-                  strokeLinecap="round"
-                  style={{
-                    filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.8)) drop-shadow(0 0 6px rgba(255,255,255,0.4))',
-                  }}
-                />
-                {/* Darker edge for depth */}
-                <line
-                  x1={crack.x1}
-                  y1={crack.y1}
-                  x2={currentX2}
-                  y2={currentY2}
-                  stroke="rgba(0, 0, 0, 0.3)"
-                  strokeWidth={crack.width * 0.5}
-                  strokeLinecap="round"
-                />
-                
-                {/* Branch cracks */}
-                {crack.branches.map((branch) => {
-                  const branchElapsed = elapsed;
-                  const branchProgress = Math.min(1, Math.max(0, (branchElapsed - branch.delay) / branch.duration));
-                  const branchEased = 1 - Math.pow(1 - branchProgress, 3);
-                  
-                  // Only show branch if main crack has reached it
-                  const mainReachedBranch = crackProgress >= 0.3;
-                  if (!mainReachedBranch) return null;
-                  
-                  const branchX2 = branch.x1 + (branch.x2 - branch.x1) * branchEased;
-                  const branchY2 = branch.y1 + (branch.y2 - branch.y1) * branchEased;
-                  
-                  return (
-                    <g key={branch.id}>
-                      <line
-                        x1={branch.x1}
-                        y1={branch.y1}
-                        x2={branchX2}
-                        y2={branchY2}
-                        stroke="rgba(255, 255, 255, 0.7)"
-                        strokeWidth={branch.width}
-                        strokeLinecap="round"
-                        style={{
-                          filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.6))',
-                        }}
-                      />
-                      <line
-                        x1={branch.x1}
-                        y1={branch.y1}
-                        x2={branchX2}
-                        y2={branchY2}
-                        stroke="rgba(0, 0, 0, 0.2)"
-                        strokeWidth={branch.width * 0.4}
-                        strokeLinecap="round"
-                      />
-                    </g>
-                  );
-                })}
-              </g>
             );
           })}
         </svg>
