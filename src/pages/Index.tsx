@@ -1,13 +1,10 @@
 import InteractiveHeroBanner, { 
   ControlSlider, 
   PRESET_INFO,
-  type PresetKey,
   type ControlPanelProps 
 } from '@/components/InteractiveHeroBanner';
 
 const ControlPanel = ({ 
-  activePreset, 
-  setActivePreset, 
   controls, 
   updateControl, 
   onReset, 
@@ -24,19 +21,11 @@ const ControlPanel = ({
     }}
   >
     <div className="flex flex-wrap gap-4 items-start">
-      {/* Preset Selector */}
+      {/* Info */}
       <div className="min-w-[140px]">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Preset</label>
-        <select
-          value={activePreset}
-          onChange={(e) => setActivePreset(e.target.value as PresetKey)}
-          className="w-full px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-800 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-        >
-          {(Object.keys(PRESET_INFO) as PresetKey[]).map(key => (
-            <option key={key} value={key}>{PRESET_INFO[key].name}</option>
-          ))}
-        </select>
-        <p className="text-[9px] text-neutral-400 mt-1">{PRESET_INFO[activePreset].description}</p>
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Effect</label>
+        <p className="text-sm font-medium text-neutral-800">{PRESET_INFO.voronoi.name}</p>
+        <p className="text-[9px] text-neutral-400 mt-1">{PRESET_INFO.voronoi.description}</p>
       </div>
 
       {/* Hover Controls */}
@@ -48,45 +37,23 @@ const ControlPanel = ({
         </div>
       </div>
 
-      {/* Click Controls */}
+      {/* Physics Controls */}
       <div className="min-w-[140px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Click</label>
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Physics</label>
         <div className="space-y-1">
           <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControl('spring', v)} min={0.1} max={2} />
           <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControl('damping', v)} min={0.1} max={2} />
         </div>
       </div>
 
-      {/* Preset-specific controls */}
+      {/* Shatter controls */}
       <div className="min-w-[140px] flex-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">
-          {PRESET_INFO[activePreset].name}
+          Shatter
         </label>
         <div className="space-y-1">
-          {activePreset === 'bubble' && (
-            <>
-              <ControlSlider label="Impulse" value={controls.popImpulse} onChange={(v) => updateControl('popImpulse', v)} min={0.1} max={3} />
-              <ControlSlider label="Softness" value={controls.bubbleSoftness} onChange={(v) => updateControl('bubbleSoftness', v)} min={0.1} max={2} />
-            </>
-          )}
-          {activePreset === 'voronoi' && (
-            <>
-              <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControl('shardSpread', v)} min={0.1} max={3} />
-              <ControlSlider label="Return" value={controls.returnSpring} onChange={(v) => updateControl('returnSpring', v)} min={0.5} max={4} />
-            </>
-          )}
-          {activePreset === 'magnetic' && (
-            <>
-              <ControlSlider label="Strength" value={controls.fieldStrength} onChange={(v) => updateControl('fieldStrength', v)} min={0.1} max={3} />
-              <ControlSlider label="Orbit" value={controls.orbitRate} onChange={(v) => updateControl('orbitRate', v)} min={0.1} max={4} />
-            </>
-          )}
-          {activePreset === 'wave' && (
-            <>
-              <ControlSlider label="Frequency" value={controls.waveFrequency} onChange={(v) => updateControl('waveFrequency', v)} min={0.5} max={5} />
-              <ControlSlider label="Speed" value={controls.waveSpeed} onChange={(v) => updateControl('waveSpeed', v)} min={0.1} max={3} />
-            </>
-          )}
+          <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControl('shardSpread', v)} min={0.1} max={3} />
+          <ControlSlider label="Return" value={controls.returnSpring} onChange={(v) => updateControl('returnSpring', v)} min={0.5} max={4} />
         </div>
       </div>
 
@@ -119,7 +86,7 @@ const Index = () => {
             Interactive Hero Banner
           </h1>
           <p className="text-sm text-neutral-500">
-            Click anywhere on the banner to trigger effects. Hover for subtle interactions.
+            Click on shapes to shatter them. Click fragments to break them further. Wait to see them spring back.
           </p>
         </div>
 
