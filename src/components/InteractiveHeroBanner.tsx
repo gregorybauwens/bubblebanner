@@ -422,30 +422,46 @@ const PRESETS: Record<PresetKey, {
     },
     update: (state, dt, _pointer, controls, shapes, viewBox) => {
       const newClickTime = state.clickTime + dt;
-      const returnDelay = controls.settleTime * 1.5; // Time before spring-back starts
+      const settleDelay = controls.settleTime * 1.5; // Time before fragments settle onto grid
       
-      // Check if we should start returning (no clicks for a while)
+      // Check if we should start settling (no clicks for a while)
       const timeSinceLastClick = newClickTime - state.lastClickTime;
-      const shouldStartReturn = timeSinceLastClick > returnDelay && 
-                                state.shardFragments.length > 0 && 
-                                !state.isReturning;
+      const shouldStartSettling = timeSinceLastClick > settleDelay && 
+                                  state.shardFragments.length > 0 && 
+                                  !state.isReturning;
       
       let newState = { 
         ...state, 
         clickTime: newClickTime,
-        isReturning: state.isReturning || shouldStartReturn,
-        returnStartTime: shouldStartReturn ? newClickTime : state.returnStartTime,
+        isReturning: state.isReturning || shouldStartSettling,
+        returnStartTime: shouldStartSettling ? newClickTime : state.returnStartTime,
       };
       
+      // Calculate grid positions for fragments when settling
+      const fragmentCount = state.shardFragments.length;
+      const cols = Math.ceil(Math.sqrt(fragmentCount * (viewBox.width / viewBox.height)));
+      const rows = Math.ceil(fragmentCount / cols);
+      const cellWidth = viewBox.width / cols;
+      const cellHeight = viewBox.height / rows;
+      
       // Update fragment physics
-      const updatedFragments = state.shardFragments.map(frag => {
+      const updatedFragments = state.shardFragments.map((frag, index) => {
         if (state.isReturning) {
-          // Spring back to original position
+          // Settle onto grid - calculate target position
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const targetX = (col + 0.5) * cellWidth - frag.shape.centroid.x;
+          const targetY = (row + 0.5) * cellHeight - frag.shape.centroid.y;
+          
+          // Spring towards grid position (not original position)
           const springForce = controls.returnSpring * 4;
           const damping = 0.85;
           
-          const newVx = frag.vx * damping - frag.offsetX * springForce * dt * 60;
-          const newVy = frag.vy * damping - frag.offsetY * springForce * dt * 60;
+          const diffX = targetX - frag.offsetX;
+          const diffY = targetY - frag.offsetY;
+          
+          const newVx = frag.vx * damping + diffX * springForce * dt * 60;
+          const newVy = frag.vy * damping + diffY * springForce * dt * 60;
           const newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
           
           return {
@@ -474,21 +490,7 @@ const PRESETS: Record<PresetKey, {
         return frag;
       });
       
-      // Clean up when return animation is complete
-      if (state.isReturning) {
-        const returnProgress = newClickTime - state.returnStartTime;
-        if (returnProgress > controls.settleTime * 2) {
-          // Reset everything
-          return {
-            ...newState,
-            shardFragments: [],
-            shatteredShapeIds: new Set<string>(),
-            isReturning: false,
-            returnStartTime: 0,
-            lastClickTime: 0,
-          };
-        }
-      }
+      // No automatic reset - fragments stay on grid until reset button is pressed
       
       newState.shardFragments = updatedFragments;
       return newState;
