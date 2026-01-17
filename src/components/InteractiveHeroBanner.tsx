@@ -676,8 +676,8 @@ const PRESETS: Record<PresetKey, {
         const shapeNormY = shape.centroid.y / viewBox.height;
         const hoverDist = distance(shapeNormX, shapeNormY, pointer.x, pointer.y);
         const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
-        x += (pointer.x - shapeNormX) * hoverInfluence * viewBox.width * 0.05;
-        y += (pointer.y - shapeNormY) * hoverInfluence * viewBox.height * 0.05;
+        x += (pointer.x - shapeNormX) * hoverInfluence * viewBox.width * 0.25;
+        y += (pointer.y - shapeNormY) * hoverInfluence * viewBox.height * 0.25;
       }
 
       const constrained = constrainToBounds(shape, x, y, scale, viewBox);
@@ -728,8 +728,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 
   // Controls state
   const [controls, setControls] = useState<Controls>({
-    hoverStrength: 1,
-    hoverRadius: 0.3,
+    hoverStrength: 2,
+    hoverRadius: 0.5,
     clickStrength: 1,
     spring: 0.3,
     damping: 0.5,
