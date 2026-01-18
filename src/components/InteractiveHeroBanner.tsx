@@ -965,7 +965,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   };
 
   // Custom cursor SVG as data URI
-  const customCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='1'/%3E%3C/svg%3E") 10 10, crosshair`;
+  const customCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='13' fill='rgba(255,255,255,0.08)' stroke='rgba(255,255,255,0.4)' stroke-width='1'/%3E%3C/svg%3E") 14 14, crosshair`;
 
   return (
     <div className={`relative w-full ${className}`} style={{ maxWidth: 1312 }}>
