@@ -1149,10 +1149,22 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             );
           })}
           
-          {/* Render voronoi fragments */}
+          {/* Render voronoi fragments with hover effect */}
           {activePreset === 'voronoi' && presetState.shardFragments.map((frag) => {
             const centerX = frag.shape.centroid.x;
             const centerY = frag.shape.centroid.y;
+            
+            // Calculate hover offset for this fragment
+            let hoverX = 0, hoverY = 0;
+            if (pointer) {
+              // Fragment's current position in normalized coordinates
+              const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
+              const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
+              const hoverDist = distance(fragNormX, fragNormY, pointer.x, pointer.y);
+              const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
+              hoverX = (pointer.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
+              hoverY = (pointer.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
+            }
             
             return (
               <motion.g
@@ -1164,8 +1176,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                   opacity: 1,
                 }}
                 animate={{
-                  x: frag.offsetX,
-                  y: frag.offsetY,
+                  x: frag.offsetX + hoverX,
+                  y: frag.offsetY + hoverY,
                   rotate: frag.rotation,
                   opacity: 1,
                 }}
