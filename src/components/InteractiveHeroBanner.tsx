@@ -786,6 +786,12 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     const clickX = point.x * viewBox.width;
     const clickY = point.y * viewBox.height;
     
+    // Cursor radius in viewBox coordinates (28px cursor, scaled to viewBox)
+    const cursorRadiusPx = 14; // Half of 28px cursor
+    const cursorRadiusX = (cursorRadiusPx / rect.width) * viewBox.width;
+    const cursorRadiusY = (cursorRadiusPx / rect.height) * viewBox.height;
+    const cursorRadius = Math.max(cursorRadiusX, cursorRadiusY);
+    
     // Special handling for voronoi preset - detect which shape was clicked
     if (activePreset === 'voronoi') {
       // Get all clickable shapes (original shapes not yet shattered + fragments)
@@ -817,12 +823,17 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         }
       });
       
-      // Find clicked shape (check from top to bottom - fragments first)
+      // Find clicked shape - check if cursor circle overlaps with shape bounds
       let clickedShape: Shape | null = null;
       for (const shape of clickableShapes) {
         const b = shape.bounds;
-        if (clickX >= b.x && clickX <= b.x + b.width &&
-            clickY >= b.y && clickY <= b.y + b.height) {
+        // Check if cursor circle overlaps with shape rectangle
+        // Find closest point on rectangle to cursor center
+        const closestX = clamp(clickX, b.x, b.x + b.width);
+        const closestY = clamp(clickY, b.y, b.y + b.height);
+        const dist = distance(clickX, clickY, closestX, closestY);
+        
+        if (dist <= cursorRadius) {
           clickedShape = shape;
           break; // Take the first (topmost) match
         }
