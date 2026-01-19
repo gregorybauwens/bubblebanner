@@ -46,6 +46,7 @@ const ControlPanel = ({
       <div className="min-w-[140px] flex-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Settle</label>
         <div className="space-y-1">
+          <ControlSlider label="Delay" value={controls.settleTime} onChange={v => updateControl('settleTime', v)} min={0} max={5} />
           <ControlSlider label="Speed" value={controls.returnSpring} onChange={v => updateControl('returnSpring', v)} min={0.5} max={5} />
           <ControlSlider label="Ease" value={controls.settleDamping} onChange={v => updateControl('settleDamping', v)} min={0} max={2} />
         </div>

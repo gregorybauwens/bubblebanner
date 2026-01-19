@@ -122,7 +122,7 @@ interface Controls {
   timeScale: number;
   // Voronoi specific
   shardSpread: number;
-  settleTime: number;
+  settleTime: number; // Delay after last shatter before returning
   returnSpring: number;
   settleDamping: number; // Higher = less bouncy, quicker settle
   // Explosion controls
@@ -135,6 +135,9 @@ interface Controls {
 // ============================================================================
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const smoothstep = (t: number) => t * t * (3 - 2 * t);
+const BURST_WINDOW_S = 0.6;
+const MAX_BURST_CLICKS = 9;
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 
@@ -300,10 +303,13 @@ const createFragmentsFromShape = (
   viewBox: ViewBox,
   controls: Controls,
   generation: number,
-  currentTime: number
+  currentTime: number,
+  shatterScale: number
 ): ShardFragment[] => {
   const fragments: ShardFragment[] = [];
-  const fragmentCount = Math.min(2 + Math.floor(Math.random() * 2), 4); // 2-4 pieces
+  const baseCount = Math.min(2 + Math.floor(Math.random() * 2), 4); // 2-4 pieces
+  const scaledCount = Math.round(baseCount * shatterScale);
+  const fragmentCount = Math.max(2, Math.min(scaledCount, 8));
   
   const bounds = shape.bounds;
   const isHorizontalShape = bounds.width > bounds.height;
@@ -358,11 +364,11 @@ const createFragmentsFromShape = (
     // Explosion force calculation - much more intense burst
     const baseSpeed = controls.explosionForce * 2.5;
     const speedVariation = 0.5 + seededRandom(seed * 4) * 1.0; // More variation
-    const speed = baseSpeed * speedVariation * controls.shardSpread;
+    const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
     
     // Distance-based impulse - closer = stronger explosion
     const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
-    const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5); // Higher base impulse
+    const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5) * (0.75 + shatterScale * 0.25); // Higher base impulse
     
     // Create SVG element for the fragment (clipped rect)
     const rx = parseFloat(shape.attrs.rx || '0');
@@ -532,7 +538,7 @@ const PRESETS: Record<PresetKey, {
     },
     update: (state, dt, _pointer, controls, shapes, viewBox) => {
       const newClickTime = state.clickTime + dt;
-      const settleDelay = controls.settleTime * 1.5; // Time before fragments settle onto grid
+      const settleDelay = controls.settleTime; // Delay after last click before returning
       
       // Check if we should start settling (no clicks for a while)
       const timeSinceLastClick = newClickTime - state.lastClickTime;
@@ -625,7 +631,9 @@ const PRESETS: Record<PresetKey, {
           const targetY = targetCenterY - frag.shape.centroid.y;
           
           // Spring towards grid position (not original position)
-          const springForce = controls.returnSpring * 6;
+          const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
+          const returnEase = smoothstep(clamp(returnElapsed / 0.6, 0, 1));
+          const springForce = controls.returnSpring * 6 * returnEase;
           // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
           const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
           
@@ -722,6 +730,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [activePreset] = useState<PresetKey>('voronoi');
   const [isPaused, setIsPaused] = useState(false);
+  const clickBurstRef = useRef<number[]>([]);
   
   // Parse SVG
   const { shapes, viewBox } = useMemo(() => parseSVG(svgMarkup), [svgMarkup]);
@@ -750,6 +759,22 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const lastTimeRef = useRef<number>(0);
   const animationRef = useRef<number>();
 
+  const getBurstMetrics = (now: number, includeNow: boolean) => {
+    const recent = clickBurstRef.current.filter((t) => now - t <= BURST_WINDOW_S);
+    if (includeNow) recent.push(now);
+    clickBurstRef.current = recent;
+    const burstClicks = Math.min(recent.length, MAX_BURST_CLICKS);
+    const burstFactor = clamp(1 + Math.max(0, burstClicks - 1) * 0.25, 1, 2.25);
+    const cursorScale = clamp(1 + (burstFactor - 1) * 0.35, 1, 1.3);
+    return { burstFactor, cursorScale };
+  };
+
+  const getPressureFactor = (event: React.PointerEvent | null) => {
+    if (!event || event.pointerType === 'mouse') return 1;
+    if (typeof event.pressure !== 'number' || event.pressure <= 0) return 1;
+    return clamp(0.85 + event.pressure * 0.75, 0.85, 1.6);
+  };
+
   // Pointer handlers
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!containerRef.current) return;
@@ -764,30 +789,28 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setPointer(null);
   }, []);
 
-  const handleClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    let clientX: number, clientY: number;
-    
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-    
+    const clientX = e.clientX;
+    const clientY = e.clientY;
     const point = {
       x: (clientX - rect.left) / rect.width,
       y: (clientY - rect.top) / rect.height,
     };
+
+    const now = performance.now() / 1000;
+    const { burstFactor, cursorScale } = getBurstMetrics(now, true);
+    const pressureFactor = getPressureFactor(e);
+    const shatterScale = clamp(burstFactor * pressureFactor, 0.85, 2.4);
     
     // Convert to viewBox coordinates for hit testing
     const clickX = point.x * viewBox.width;
     const clickY = point.y * viewBox.height;
     
-    // Cursor radius in viewBox coordinates (28px cursor, scaled to viewBox)
-    const cursorRadiusPx = 14; // Half of 28px cursor
+    // Cursor radius in viewBox coordinates (34px cursor, scaled to viewBox)
+    // Slightly oversized hit area to err on the side of interaction.
+    const cursorRadiusPx = 19 * cursorScale; // 34px cursor + 4px forgiveness
     const cursorRadiusX = (cursorRadiusPx / rect.width) * viewBox.width;
     const cursorRadiusY = (cursorRadiusPx / rect.height) * viewBox.height;
     const cursorRadius = Math.max(cursorRadiusX, cursorRadiusY);
@@ -879,7 +902,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           viewBox,
           controls,
           generation,
-          presetState.clickTime
+          presetState.clickTime,
+          shatterScale
         );
         
         // Generate crack lines from the click point
@@ -975,8 +999,11 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setControls(prev => ({ ...prev, [key]: value }));
   };
 
-  // Custom cursor SVG as data URI
-  const customCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='13' fill='rgba(255,255,255,0.08)' stroke='rgba(255,255,255,0.4)' stroke-width='1'/%3E%3C/svg%3E") 14 14, crosshair`;
+  const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
+  const cursorSize = Math.round(34 * cursorScale);
+  const cursorHotspot = Math.round(cursorSize / 2);
+  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 34 34"><circle cx="17" cy="17" r="16" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
+  const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
 
   return (
     <div className={`relative w-full ${className}`} style={{ maxWidth: 1312 }}>
@@ -991,8 +1018,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         }}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
-        onClick={handleClick}
-        onTouchStart={handleClick}
+        onPointerDown={handlePointerDown}
       >
         {/* SVG Container */}
         <svg
