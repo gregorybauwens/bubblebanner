@@ -135,11 +135,11 @@ const DEFAULT_CONTROLS: Controls = {
   spring: 0.3,
   damping: 0.5,
   timeScale: 1,
-  shardSpread: 0.6,
+  shardSpread: 0.9,
   settleTime: 1.1,
   returnSpring: 2.2,
   settleDamping: 1.9,
-  explosionForce: 2.5,
+  explosionForce: 5.5,
   explosionSpin: 1.2,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
@@ -992,6 +992,16 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleReset]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.data === 'RESET_BANNER') {
+        handleReset();
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, [handleReset]);
 
   // Animation loop
