@@ -1,3 +1,5 @@
+import InteractiveHeroBanner from "@/components/InteractiveHeroBanner";
+
 const Index = () => {
   return (
     <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
