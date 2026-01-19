@@ -137,9 +137,9 @@ const DEFAULT_CONTROLS: Controls = {
   timeScale: 1,
   shardSpread: 0.9,
   settleTime: 1.1,
-  returnSpring: 2.2,
+  returnSpring: 2.0,
   settleDamping: 1.9,
-  explosionForce: 5.5,
+  explosionForce: 4.5,
   explosionSpin: 1.2,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
@@ -614,7 +614,7 @@ const PRESETS: Record<PresetKey, {
           
           // Spring towards grid position (not original position)
           const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
-          const returnEase = smoothstep(clamp(returnElapsed / 0.6, 0, 1));
+          const returnEase = smoothstep(clamp(returnElapsed / 0.6, .5, 1));
           const springForce = controls.returnSpring * 6 * returnEase;
           // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
           const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
@@ -994,16 +994,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleReset]);
 
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.data === 'RESET_BANNER') {
-        handleReset();
-      }
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [handleReset]);
-
   // Animation loop
   useEffect(() => {
     if (prefersReducedMotion || isPaused) return;
@@ -1073,7 +1063,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       {/* Main Banner */}
       <div
         ref={containerRef}
-        className="relative w-full overflow-hidden rounded-2xl"
+        className="relative w-full overflow-hidden"
         style={{ 
           aspectRatio: `${viewBox.width} / ${viewBox.height}`,
           background: 'transparent',
