@@ -614,7 +614,7 @@ const PRESETS: Record<PresetKey, {
           
           // Spring towards grid position (not original position)
           const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
-          const returnEase = smoothstep(clamp(returnElapsed / 0.6, 0, 1));
+          const returnEase = smoothstep(clamp(returnElapsed / 0.8, 0, 1));
           const springForce = controls.returnSpring * 6 * returnEase;
           // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
           const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
