@@ -73,22 +73,6 @@ interface ShardFragment {
   isExploding: boolean;
 }
 
-// Crack line for glass shattering effect
-interface CrackLine {
-  id: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  spawnTime: number;
-  duration: number;
-  delay: number;
-  width: number;
-  branches: CrackLine[];
-  // For clipping to shape
-  shapeBounds: { x: number; y: number; width: number; height: number };
-  shapeElement: string; // SVG element to use as clip path
-}
 
 interface PresetState {
   clickPoint: { x: number; y: number } | null;
@@ -99,8 +83,7 @@ interface PresetState {
   isReturning: boolean;
   returnStartTime: number;
   lastClickTime: number;
-  // Glass crack lines
-  crackLines: CrackLine[];
+  lastExplosionTime: number;
 }
 
 interface ShapeTransform {
@@ -138,6 +121,12 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
 const BURST_WINDOW_S = 0.6;
 const MAX_BURST_CLICKS = 9;
+const MAX_TOTAL_FRAGMENTS = 320;
+const MAX_TOTAL_CRACK_LINES = 180;
+const LOAD_FRAGMENT_THRESHOLD = 180;
+const LOAD_DT_THRESHOLD = 0.02;
+const LOAD_RECOVERY_THRESHOLD = 0.018;
+const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 const DEFAULT_CONTROLS: Controls = {
   hoverStrength: 0.2,
@@ -146,12 +135,12 @@ const DEFAULT_CONTROLS: Controls = {
   spring: 0.3,
   damping: 0.5,
   timeScale: 1,
-  shardSpread: 0.2,
+  shardSpread: 0.6,
   settleTime: 1.1,
   returnSpring: 2.2,
   settleDamping: 1.9,
-  explosionForce: 1.8,
-  explosionSpin: 1,
+  explosionForce: 2.5,
+  explosionSpin: 1.2,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -217,6 +206,54 @@ const constrainToBounds = (
   }
   
   return { x: constrainedX, y: constrainedY };
+};
+
+const bounceWithinBounds = (
+  shape: { bounds: { x: number; y: number; width: number; height: number } },
+  offsetX: number,
+  offsetY: number,
+  vx: number,
+  vy: number,
+  viewBox: { x: number; y: number; width: number; height: number },
+  padding: number = 0,
+  restitution: number = 0.8
+): { x: number; y: number; vx: number; vy: number } => {
+  const bounds = shape.bounds;
+  const scaledWidth = bounds.width;
+  const scaledHeight = bounds.height;
+
+  let x = offsetX;
+  let y = offsetY;
+  let nextVx = vx;
+  let nextVy = vy;
+
+  const newLeft = bounds.x + x;
+  const newRight = newLeft + scaledWidth;
+  const newTop = bounds.y + y;
+  const newBottom = newTop + scaledHeight;
+
+  const containerLeft = viewBox.x + padding;
+  const containerRight = viewBox.x + viewBox.width - padding;
+  const containerTop = viewBox.y + padding;
+  const containerBottom = viewBox.y + viewBox.height - padding;
+
+  if (newLeft < containerLeft) {
+    x += containerLeft - newLeft;
+    nextVx = Math.abs(nextVx) * restitution;
+  } else if (newRight > containerRight) {
+    x -= newRight - containerRight;
+    nextVx = -Math.abs(nextVx) * restitution;
+  }
+
+  if (newTop < containerTop) {
+    y += containerTop - newTop;
+    nextVy = Math.abs(nextVy) * restitution;
+  } else if (newBottom > containerBottom) {
+    y -= newBottom - containerBottom;
+    nextVy = -Math.abs(nextVy) * restitution;
+  }
+
+  return { x, y, vx: nextVx, vy: nextVy };
 };
 
 // ============================================================================
@@ -452,80 +489,8 @@ const createInitialState = (): PresetState => ({
   isReturning: false,
   returnStartTime: 0,
   lastClickTime: 0,
-  crackLines: [],
+  lastExplosionTime: 0,
 });
-
-// Generate glass crack lines from a click point
-const generateCrackLines = (
-  clickX: number,
-  clickY: number,
-  bounds: { x: number; y: number; width: number; height: number },
-  shapeElement: string,
-  currentTime: number,
-  numCracks: number = 8
-): CrackLine[] => {
-  const cracks: CrackLine[] = [];
-  const maxLength = Math.max(bounds.width, bounds.height) * 0.8;
-  
-  for (let i = 0; i < numCracks; i++) {
-    // Radiate outward from click point with some randomness
-    const baseAngle = (i / numCracks) * Math.PI * 2;
-    const angleVariation = (seededRandom(i * 17 + currentTime) - 0.5) * 0.5;
-    const angle = baseAngle + angleVariation;
-    
-    const length = maxLength * (0.4 + seededRandom(i * 31 + currentTime) * 0.6);
-    const endX = clickX + Math.cos(angle) * length;
-    const endY = clickY + Math.sin(angle) * length;
-    
-    // Create main crack
-    const mainCrack: CrackLine = {
-      id: `crack-${i}-${currentTime}`,
-      x1: clickX,
-      y1: clickY,
-      x2: endX,
-      y2: endY,
-      spawnTime: currentTime,
-      duration: 0.15 + seededRandom(i * 7) * 0.1,
-      delay: i * 0.02, // Stagger the cracks
-      width: 2 + seededRandom(i * 13) * 1.5,
-      branches: [],
-      shapeBounds: bounds,
-      shapeElement: shapeElement,
-    };
-    
-    // Add 1-3 branches to each main crack
-    const numBranches = 1 + Math.floor(seededRandom(i * 23 + currentTime) * 3);
-    for (let b = 0; b < numBranches; b++) {
-      const branchT = 0.3 + seededRandom(i * 41 + b * 11) * 0.5; // Position along main crack
-      const branchX = clickX + (endX - clickX) * branchT;
-      const branchY = clickY + (endY - clickY) * branchT;
-      
-      // Branch angle deviates from main crack
-      const branchAngleOffset = (seededRandom(i * 53 + b * 17) - 0.5) * Math.PI * 0.6;
-      const branchAngle = angle + branchAngleOffset;
-      const branchLength = length * (0.2 + seededRandom(i * 67 + b * 23) * 0.3);
-      
-      mainCrack.branches.push({
-        id: `crack-${i}-branch-${b}-${currentTime}`,
-        x1: branchX,
-        y1: branchY,
-        x2: branchX + Math.cos(branchAngle) * branchLength,
-        y2: branchY + Math.sin(branchAngle) * branchLength,
-        spawnTime: currentTime,
-        duration: 0.1 + seededRandom(i * 79 + b) * 0.08,
-        delay: i * 0.02 + branchT * 0.1,
-        width: 1 + seededRandom(i * 89 + b * 31) * 1,
-        branches: [],
-        shapeBounds: bounds,
-        shapeElement: shapeElement,
-      });
-    }
-    
-    cracks.push(mainCrack);
-  }
-  
-  return cracks;
-};
 
 const PRESETS: Record<PresetKey, {
   name: string;
@@ -557,7 +522,9 @@ const PRESETS: Record<PresetKey, {
       
       // Check if we should start settling (no clicks for a while)
       const timeSinceLastClick = newClickTime - state.lastClickTime;
-      const shouldStartSettling = timeSinceLastClick > settleDelay && 
+      const timeSinceLastExplosion = newClickTime - state.lastExplosionTime;
+      const shouldStartSettling = timeSinceLastClick > settleDelay &&
+                                  timeSinceLastExplosion > 0.65 &&
                                   state.shardFragments.length > 0 && 
                                   !state.isReturning;
       
@@ -659,27 +626,53 @@ const PRESETS: Record<PresetKey, {
           const newVy = frag.vy * damping + diffY * springForce * dt * 60;
           const newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
           
+          const nextOffsetX = frag.offsetX + newVx * dt;
+          const nextOffsetY = frag.offsetY + newVy * dt;
+          const bounced = bounceWithinBounds(
+            frag.shape,
+            nextOffsetX,
+            nextOffsetY,
+            newVx,
+            newVy,
+            viewBox
+          );
           return {
             ...frag,
-            vx: newVx,
-            vy: newVy,
+            vx: bounced.vx,
+            vy: bounced.vy,
             vr: newVr,
-            offsetX: frag.offsetX + newVx * dt,
-            offsetY: frag.offsetY + newVy * dt,
+            offsetX: bounced.x,
+            offsetY: bounced.y,
             rotation: frag.rotation + newVr * dt,
             isExploding: false,
           };
         } else if (frag.isExploding) {
           // Explosion phase with damping
           const damping = 0.97;
+          const nextOffsetX = frag.offsetX + frag.vx * dt;
+          const nextOffsetY = frag.offsetY + frag.vy * dt;
+          const nextVx = frag.vx * damping;
+          const nextVy = frag.vy * damping;
+          const nextVr = frag.vr * damping;
+          const bounced = bounceWithinBounds(
+            frag.shape,
+            nextOffsetX,
+            nextOffsetY,
+            nextVx,
+            nextVy,
+            viewBox
+          );
+          const speed = Math.hypot(nextVx, nextVy) + Math.abs(nextVr) * 0.1;
+          const isExploding = speed > 5;
           return {
             ...frag,
-            vx: frag.vx * damping,
-            vy: frag.vy * damping,
-            vr: frag.vr * damping,
-            offsetX: frag.offsetX + frag.vx * dt,
-            offsetY: frag.offsetY + frag.vy * dt,
+            vx: bounced.vx,
+            vy: bounced.vy,
+            vr: nextVr,
+            offsetX: bounced.x,
+            offsetY: bounced.y,
             rotation: frag.rotation + frag.vr * dt,
+            isExploding,
           };
         }
         return frag;
@@ -687,7 +680,10 @@ const PRESETS: Record<PresetKey, {
       
       // No automatic reset - fragments stay on grid until reset button is pressed
       
+      const hasExploding = updatedFragments.some(frag => frag.isExploding);
+
       newState.shardFragments = updatedFragments;
+      newState.lastExplosionTime = hasExploding ? newClickTime : state.lastExplosionTime;
       return newState;
     },
     shapeTransform: (shape, state, pointer, controls, viewBox) => {
@@ -767,9 +763,25 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const [presetState, setPresetState] = useState<PresetState>(createInitialState());
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [shapeTransforms, setShapeTransforms] = useState<Map<string, ShapeTransform>>(new Map());
+  const [isUnderLoad, setIsUnderLoad] = useState(false);
   
   const lastTimeRef = useRef<number>(0);
   const animationRef = useRef<number>();
+  const avgDtRef = useRef<number>(0.016);
+  const presetStateRef = useRef<PresetState>(presetState);
+
+  useEffect(() => {
+    presetStateRef.current = presetState;
+  }, [presetState]);
+
+  const effectiveControls = useMemo(() => {
+    if (!isUnderLoad) return controls;
+    return {
+      ...controls,
+      hoverStrength: 0,
+      hoverRadius: 0.0001,
+    };
+  }, [controls, isUnderLoad]);
 
   const getBurstMetrics = (now: number, includeNow: boolean) => {
     const recent = clickBurstRef.current.filter((t) => now - t <= BURST_WINDOW_S);
@@ -829,15 +841,47 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     
     // Special handling for voronoi preset - detect which shape was clicked
     if (activePreset === 'voronoi') {
-      // Get all clickable shapes (original shapes not yet shattered + fragments)
+      // Get all clickable shapes in render order (shapes first, fragments on top)
       const clickableShapes: Shape[] = [];
-      
-      // Add fragments first (they're on top)
+
+      // Add original shapes that haven't been shattered
+      shapes.forEach(shape => {
+        if (!presetState.shatteredShapeIds.has(shape.id)) {
+          const transform = shapeTransforms.get(shape.id);
+          const offsetX = transform?.x ?? 0;
+          const offsetY = transform?.y ?? 0;
+          clickableShapes.push({
+            ...shape,
+            bounds: {
+              x: shape.bounds.x + offsetX,
+              y: shape.bounds.y + offsetY,
+              width: shape.bounds.width,
+              height: shape.bounds.height,
+            },
+            centroid: {
+              x: shape.centroid.x + offsetX,
+              y: shape.centroid.y + offsetY,
+            },
+          });
+        }
+      });
+
+      // Add fragments (rendered last, so on top)
       presetState.shardFragments.forEach(frag => {
-        // Adjust bounds by fragment offset
+        let hoverX = 0;
+        let hoverY = 0;
+        if (pointer && !isUnderLoad) {
+          const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
+          const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
+          const hoverDist = distance(fragNormX, fragNormY, pointer.x, pointer.y);
+          const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
+          hoverX = (pointer.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
+          hoverY = (pointer.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
+        }
+
         const adjustedBounds = {
-          x: frag.shape.bounds.x + frag.offsetX,
-          y: frag.shape.bounds.y + frag.offsetY,
+          x: frag.shape.bounds.x + frag.offsetX + hoverX,
+          y: frag.shape.bounds.y + frag.offsetY + hoverY,
           width: frag.shape.bounds.width,
           height: frag.shape.bounds.height,
         };
@@ -845,117 +889,86 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           ...frag.shape,
           bounds: adjustedBounds,
           centroid: {
-            x: frag.shape.centroid.x + frag.offsetX,
-            y: frag.shape.centroid.y + frag.offsetY,
+            x: frag.shape.centroid.x + frag.offsetX + hoverX,
+            y: frag.shape.centroid.y + frag.offsetY + hoverY,
           },
         });
       });
-      
-      // Add original shapes that haven't been shattered
-      shapes.forEach(shape => {
-        if (!presetState.shatteredShapeIds.has(shape.id)) {
-          clickableShapes.push(shape);
-        }
-      });
-      
-      // Find clicked shape - check if cursor circle overlaps with shape bounds
-      let clickedShape: Shape | null = null;
-      for (const shape of clickableShapes) {
+
+      // Find all shapes within the cursor radius (topmost last)
+      const hitShapes: Shape[] = [];
+      for (let i = clickableShapes.length - 1; i >= 0; i -= 1) {
+        const shape = clickableShapes[i];
         const b = shape.bounds;
         // Check if cursor circle overlaps with shape rectangle
         // Find closest point on rectangle to cursor center
         const closestX = clamp(clickX, b.x, b.x + b.width);
         const closestY = clamp(clickY, b.y, b.y + b.height);
         const dist = distance(clickX, clickY, closestX, closestY);
-        
+
         if (dist <= cursorRadius) {
-          clickedShape = shape;
-          break; // Take the first (topmost) match
+          hitShapes.push(shape);
         }
       }
-      
-      if (clickedShape) {
-        // Find the actual shape/fragment to shatter
-        const isFragment = clickedShape.id.startsWith('frag-');
-        
-        // Get the shape to fragment (either the clicked fragment's original shape or the original shape)
-        let shapeToFragment: Shape;
-        let fragmentToRemove: ShardFragment | null = null;
-        
-        if (isFragment) {
-          // Find the fragment that was clicked
-          fragmentToRemove = presetState.shardFragments.find(f => f.shape.id === clickedShape!.id) || null;
-          if (fragmentToRemove) {
-            shapeToFragment = {
-              ...fragmentToRemove.shape,
-              bounds: {
-                x: fragmentToRemove.shape.bounds.x + fragmentToRemove.offsetX,
-                y: fragmentToRemove.shape.bounds.y + fragmentToRemove.offsetY,
-                width: fragmentToRemove.shape.bounds.width,
-                height: fragmentToRemove.shape.bounds.height,
-              },
-              centroid: {
-                x: fragmentToRemove.shape.centroid.x + fragmentToRemove.offsetX,
-                y: fragmentToRemove.shape.centroid.y + fragmentToRemove.offsetY,
-              },
-            };
+
+      if (hitShapes.length > 0) {
+        const maxHitShapes = isUnderLoad ? 2 : 4;
+        const limitedHitShapes = hitShapes.slice(0, maxHitShapes);
+        const fragmentsToRemove = new Set<string>();
+        let combinedNewFragments: ShardFragment[] = [];
+        const newShatteredIds = new Set(presetState.shatteredShapeIds);
+        const loadScale = clamp(1 - presetState.shardFragments.length / MAX_TOTAL_FRAGMENTS, 0.35, 1);
+        const effectiveShatterScale = shatterScale * loadScale * (isUnderLoad ? 0.7 : 1);
+
+        limitedHitShapes.forEach((hitShape) => {
+          const isFragment = hitShape.id.startsWith('frag-');
+          let fragmentToRemove: ShardFragment | null = null;
+
+          if (isFragment) {
+            fragmentToRemove = presetState.shardFragments.find(f => f.shape.id === hitShape.id) || null;
+            if (!fragmentToRemove) return;
           } else {
-            return;
+            newShatteredIds.add(hitShape.id);
           }
-        } else {
-          shapeToFragment = clickedShape;
-        }
-        
-        // Create new fragments from the clicked shape
-        const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
-        const newFragments = createFragmentsFromShape(
-          shapeToFragment,
-          point,
-          viewBox,
-          controls,
-          generation,
-          presetState.clickTime,
-          shatterScale
-        );
-        
-        // Generate crack lines from the click point
-        const crackClickX = point.x * viewBox.width;
-        const crackClickY = point.y * viewBox.height;
-        const newCrackLines = generateCrackLines(
-          crackClickX,
-          crackClickY,
-          shapeToFragment.bounds,
-          shapeToFragment.element,
-          presetState.clickTime,
-          6 + Math.floor(Math.random() * 4) // 6-9 cracks
-        );
-        
-        setPresetState(prev => {
-          // Remove the fragment that was clicked (if it was a fragment)
-          let updatedFragments = prev.shardFragments;
-          if (fragmentToRemove) {
-            updatedFragments = prev.shardFragments.filter(f => f.id !== fragmentToRemove!.id);
-          }
-          
-          // Add new fragments
-          const shatteredIds = new Set(prev.shatteredShapeIds);
-          if (!isFragment) {
-            shatteredIds.add(clickedShape!.id);
-          }
-          
-          // Keep old crack lines that haven't faded yet (within 0.8 seconds)
-          const activeCrackLines = prev.crackLines.filter(
-            crack => prev.clickTime - crack.spawnTime < 0.8
+
+          const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
+          const newFragments = createFragmentsFromShape(
+            hitShape,
+            point,
+            viewBox,
+            controls,
+            generation,
+            presetState.clickTime,
+            effectiveShatterScale
           );
-          
+
+          if (fragmentToRemove) {
+            fragmentsToRemove.add(fragmentToRemove.id);
+          }
+          combinedNewFragments = combinedNewFragments.concat(newFragments);
+        });
+
+        setPresetState(prev => {
+          const updatedFragments = fragmentsToRemove.size
+            ? prev.shardFragments.filter(f => !fragmentsToRemove.has(f.id))
+            : prev.shardFragments;
+
+          let nextFragments = [...updatedFragments, ...combinedNewFragments];
+          if (nextFragments.length > MAX_TOTAL_FRAGMENTS) {
+            nextFragments = nextFragments
+              .slice()
+              .sort((a, b) => b.spawnTime - a.spawnTime)
+              .slice(0, MAX_TOTAL_FRAGMENTS);
+          }
+
           return {
             ...prev,
-            shardFragments: [...updatedFragments, ...newFragments],
-            shatteredShapeIds: shatteredIds,
+            shardFragments: nextFragments,
+            shatteredShapeIds: newShatteredIds,
             clickPoint: point,
             lastClickTime: prev.clickTime,
-            isReturning: false, // Reset returning state so new fragments can explode
-            crackLines: [...activeCrackLines, ...newCrackLines],
+            lastExplosionTime: prev.clickTime,
+            isReturning: false,
           };
         });
         return;
@@ -992,7 +1005,17 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       const preset = PRESETS[activePreset];
       
       // Update preset state
-      setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointer, controls, shapes, viewBox));
+      setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointer, effectiveControls, shapes, viewBox));
+
+      const fragmentCount = presetStateRef.current.shardFragments.length;
+      avgDtRef.current = avgDtRef.current * 0.9 + dt * 0.1;
+      const overload = fragmentCount > LOAD_FRAGMENT_THRESHOLD || avgDtRef.current > LOAD_DT_THRESHOLD;
+      const recovered = fragmentCount < LOAD_FRAGMENT_THRESHOLD * 0.8 && avgDtRef.current < LOAD_RECOVERY_THRESHOLD;
+      if (!isUnderLoad && overload) {
+        setIsUnderLoad(true);
+      } else if (isUnderLoad && recovered) {
+        setIsUnderLoad(false);
+      }
       
       animationRef.current = requestAnimationFrame(animate);
     };
@@ -1001,7 +1024,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [activePreset, controls, pointer, shapes, prefersReducedMotion, isPaused]);
+  }, [activePreset, controls.timeScale, effectiveControls, pointer, shapes, prefersReducedMotion, isPaused, isUnderLoad]);
 
   // Calculate transforms
   useEffect(() => {
@@ -1009,12 +1032,12 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     const newTransforms = new Map<string, ShapeTransform>();
     
     shapes.forEach(shape => {
-      const transform = preset.shapeTransform(shape, presetState, pointer, controls, viewBox);
+      const transform = preset.shapeTransform(shape, presetState, pointer, effectiveControls, viewBox);
       newTransforms.set(shape.id, transform);
     });
     
     setShapeTransforms(newTransforms);
-  }, [activePreset, presetState, pointer, controls, shapes, viewBox]);
+  }, [activePreset, presetState, pointer, effectiveControls, shapes, viewBox]);
 
   // Control updater
   const updateControl = (key: keyof Controls, value: number) => {
@@ -1112,99 +1135,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             );
           })}
           
-          {/* Render glass crack lines ON the shapes (clipped to shape bounds) */}
-          {activePreset === 'voronoi' && (presetState.crackLines || []).map((crack, crackIndex) => {
-            const elapsed = presetState.clickTime - crack.spawnTime;
-            const fadeOutStart = 0.3;
-            const fadeOutDuration = 0.25;
-            const opacity = elapsed > fadeOutStart 
-              ? Math.max(0, 1 - (elapsed - fadeOutStart) / fadeOutDuration)
-              : 1;
-            
-            if (opacity <= 0) return null;
-            
-            // Calculate animation progress for each crack
-            const crackProgress = Math.min(1, Math.max(0, (elapsed - crack.delay) / crack.duration));
-            const eased = 1 - Math.pow(1 - crackProgress, 3); // Ease out cubic
-            
-            const currentX2 = crack.x1 + (crack.x2 - crack.x1) * eased;
-            const currentY2 = crack.y1 + (crack.y2 - crack.y1) * eased;
-            
-            const clipId = `crack-clip-${crack.id}`;
-            
-            return (
-              <g key={crack.id}>
-                {/* Define clipPath using the shape */}
-                <defs>
-                  <clipPath id={clipId}>
-                    <g dangerouslySetInnerHTML={{ __html: crack.shapeElement }} />
-                  </clipPath>
-                </defs>
-                
-                {/* Crack lines clipped to shape */}
-                <g clipPath={`url(#${clipId})`} opacity={opacity}>
-                  {/* Dark crack line (shadow/depth) */}
-                  <line
-                    x1={crack.x1}
-                    y1={crack.y1}
-                    x2={currentX2}
-                    y2={currentY2}
-                    stroke="rgba(0, 0, 0, 0.5)"
-                    strokeWidth={crack.width + 1}
-                    strokeLinecap="round"
-                  />
-                  {/* Main white crack line */}
-                  <line
-                    x1={crack.x1}
-                    y1={crack.y1}
-                    x2={currentX2}
-                    y2={currentY2}
-                    stroke="rgba(255, 255, 255, 0.95)"
-                    strokeWidth={crack.width}
-                    strokeLinecap="round"
-                  />
-                  
-                  {/* Branch cracks */}
-                  {crack.branches.map((branch) => {
-                    const branchElapsed = elapsed;
-                    const branchProgress = Math.min(1, Math.max(0, (branchElapsed - branch.delay) / branch.duration));
-                    const branchEased = 1 - Math.pow(1 - branchProgress, 3);
-                    
-                    // Only show branch if main crack has reached it
-                    const mainReachedBranch = crackProgress >= 0.3;
-                    if (!mainReachedBranch) return null;
-                    
-                    const branchX2 = branch.x1 + (branch.x2 - branch.x1) * branchEased;
-                    const branchY2 = branch.y1 + (branch.y2 - branch.y1) * branchEased;
-                    
-                    return (
-                      <g key={branch.id}>
-                        <line
-                          x1={branch.x1}
-                          y1={branch.y1}
-                          x2={branchX2}
-                          y2={branchY2}
-                          stroke="rgba(0, 0, 0, 0.4)"
-                          strokeWidth={branch.width + 0.5}
-                          strokeLinecap="round"
-                        />
-                        <line
-                          x1={branch.x1}
-                          y1={branch.y1}
-                          x2={branchX2}
-                          y2={branchY2}
-                          stroke="rgba(255, 255, 255, 0.85)"
-                          strokeWidth={branch.width}
-                          strokeLinecap="round"
-                        />
-                      </g>
-                    );
-                  })}
-                </g>
-              </g>
-            );
-          })}
-          
           {/* Render voronoi fragments with hover effect */}
           {activePreset === 'voronoi' && presetState.shardFragments.map((frag) => {
             const centerX = frag.shape.centroid.x;
@@ -1212,12 +1142,12 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             
             // Calculate hover offset for this fragment
             let hoverX = 0, hoverY = 0;
-            if (pointer) {
+            if (pointer && !isUnderLoad) {
               // Fragment's current position in normalized coordinates
               const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
               const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
               const hoverDist = distance(fragNormX, fragNormY, pointer.x, pointer.y);
-              const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
+              const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
               hoverX = (pointer.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
               hoverY = (pointer.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
             }
@@ -1259,6 +1189,11 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             background: 'radial-gradient(ellipse at 30% 40%, transparent 0%, rgba(0,0,0,0.02) 100%)',
           }}
         />
+        {SHOW_LOAD_INDICATOR && (
+          <div className="absolute top-2 right-2 rounded-full px-2 py-1 text-[10px] uppercase tracking-wider bg-black/40 text-white">
+            {isUnderLoad ? 'Perf: Low' : 'Perf: High'}
+          </div>
+        )}
       </div>
 
       {/* Render external controls if provided */}
