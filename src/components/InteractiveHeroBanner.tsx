@@ -138,6 +138,21 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
 const BURST_WINDOW_S = 0.6;
 const MAX_BURST_CLICKS = 9;
+const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
+const DEFAULT_CONTROLS: Controls = {
+  hoverStrength: 0.2,
+  hoverRadius: 0.5,
+  clickStrength: 1,
+  spring: 0.3,
+  damping: 0.5,
+  timeScale: 1,
+  shardSpread: 0.2,
+  settleTime: 1.1,
+  returnSpring: 2.2,
+  settleDamping: 1.9,
+  explosionForce: 1.8,
+  explosionSpin: 1,
+};
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 
@@ -736,19 +751,16 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const { shapes, viewBox } = useMemo(() => parseSVG(svgMarkup), [svgMarkup]);
 
   // Controls state
-  const [controls, setControls] = useState<Controls>({
-    hoverStrength: 2,
-    hoverRadius: 0.5,
-    clickStrength: 1,
-    spring: 0.3,
-    damping: 0.5,
-    timeScale: 1,
-    shardSpread: 1,
-    settleTime: 2,
-    returnSpring: 2,
-    settleDamping: 1.2, // Default to quick, minimal bounce
-    explosionForce: 1.5, // Strong default burst
-    explosionSpin: 1, // Moderate spin
+  const [controls, setControls] = useState<Controls>(() => {
+    if (typeof window === 'undefined') return DEFAULT_CONTROLS;
+    try {
+      const saved = window.localStorage.getItem(CONTROLS_STORAGE_KEY);
+      if (!saved) return DEFAULT_CONTROLS;
+      const parsed = JSON.parse(saved) as Partial<Controls>;
+      return { ...DEFAULT_CONTROLS, ...parsed };
+    } catch {
+      return DEFAULT_CONTROLS;
+    }
   });
 
   // Animation state
@@ -959,6 +971,16 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setPresetState(createInitialState());
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === 'r') {
+        handleReset();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleReset]);
+
   // Animation loop
   useEffect(() => {
     if (prefersReducedMotion || isPaused) return;
@@ -999,6 +1021,14 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setControls(prev => ({ ...prev, [key]: value }));
   };
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CONTROLS_STORAGE_KEY, JSON.stringify(controls));
+    } catch {
+      // Ignore storage failures
+    }
+  }, [controls]);
+
   const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
   const cursorSize = Math.round(34 * cursorScale);
   const cursorHotspot = Math.round(cursorSize / 2);
@@ -1013,7 +1043,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         className="relative w-full overflow-hidden rounded-2xl"
         style={{ 
           aspectRatio: `${viewBox.width} / ${viewBox.height}`,
-          background: 'linear-gradient(135deg, hsl(0 0% 8%) 0%, hsl(0 0% 12%) 100%)',
+          background: 'transparent',
           cursor: customCursor,
         }}
         onPointerMove={handlePointerMove}
