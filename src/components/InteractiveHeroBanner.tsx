@@ -187,6 +187,26 @@ const DEFAULT_CONTROLS: Controls = {
   explosionForce: 0.2,
   explosionSpin: 4.8,
 };
+// #region agent log
+const LOG_RUN_ID = 'post-fix';
+const logDebug = (payload: {
+  hypothesisId: string;
+  location: string;
+  message: string;
+  data?: Record<string, unknown>;
+}) => {
+  fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: LOG_RUN_ID,
+      timestamp: Date.now(),
+      ...payload,
+    }),
+  }).catch(() => {});
+};
+// #endregion agent log
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 
@@ -574,6 +594,21 @@ const PRESETS: Record<PresetKey, {
                                   timeSinceLastExplosion > 0.65 &&
                                   state.shardFragments.length > 0 && 
                                   !state.isReturning;
+      // #region agent log
+      if (shouldStartSettling) {
+        logDebug({
+          hypothesisId: 'H1',
+          location: 'InteractiveHeroBanner.tsx:update',
+          message: 'shouldStartSettling',
+          data: {
+            timeSinceLastClick,
+            timeSinceLastExplosion,
+            fragments: state.shardFragments.length,
+            isReturning: state.isReturning,
+          },
+        });
+      }
+      // #endregion agent log
       
       let newState = { 
         ...state, 
@@ -734,15 +769,59 @@ const PRESETS: Record<PresetKey, {
       
       const hasExploding = updatedFragments.some(frag => frag.isExploding);
       const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
-      const shouldFinalizeReset = state.isReturning && state.returnMode === 'original' && updatedFragments.length > 0 &&
+      const isResetting = state.returnMode === 'original';
+      // #region agent log
+      if (state.returnMode === 'original' && !state.isReturning) {
+        logDebug({
+          hypothesisId: 'H4',
+          location: 'InteractiveHeroBanner.tsx:update',
+          message: 'resetStateMismatch',
+          data: {
+            returnMode: state.returnMode,
+            isReturning: state.isReturning,
+            fragments: updatedFragments.length,
+          },
+        });
+      }
+      // #endregion agent log
+      const shouldFinalizeReset = isResetting && updatedFragments.length > 0 &&
         (returnElapsed > 1 || updatedFragments.every(frag => {
           const speed = Math.hypot(frag.vx, frag.vy) + Math.abs(frag.vr);
           return Math.abs(frag.offsetX) < 0.5 && Math.abs(frag.offsetY) < 0.5 && speed < 5;
         }));
+      // #region agent log
+      if (state.returnMode === 'original') {
+        logDebug({
+          hypothesisId: 'H1',
+          location: 'InteractiveHeroBanner.tsx:update',
+          message: 'resetProgress',
+          data: {
+            returnElapsed,
+            shouldFinalizeReset,
+            fragments: updatedFragments.length,
+            isReturning: state.isReturning,
+          },
+        });
+      }
+      // #endregion agent log
 
       newState.shardFragments = updatedFragments;
       newState.lastExplosionTime = hasExploding ? newClickTime : state.lastExplosionTime;
+      if (isResetting && !newState.isReturning) {
+        newState.isReturning = true;
+      }
       if (shouldFinalizeReset) {
+        // #region agent log
+        logDebug({
+          hypothesisId: 'H1',
+          location: 'InteractiveHeroBanner.tsx:update',
+          message: 'resetFinalized',
+          data: {
+            returnElapsed,
+            fragments: updatedFragments.length,
+          },
+        });
+        // #endregion agent log
         newState = {
           ...newState,
           shardFragments: [],
@@ -906,6 +985,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // #region agent log
+    const pointerStart = performance.now();
+    // #endregion agent log
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const clientX = e.clientX;
@@ -919,6 +1001,33 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     const { burstFactor, cursorScale } = getBurstMetrics(now, true);
     const pressureFactor = getPressureFactor(e);
     const shatterScale = clamp(burstFactor * pressureFactor, 0.85, 2.4);
+    // #region agent log
+    logDebug({
+      hypothesisId: 'H2',
+      location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+      message: 'pointerDown',
+      data: {
+        fragments: presetState.shardFragments.length,
+        shattered: presetState.shatteredShapeIds.size,
+        isReturning: presetState.isReturning,
+        returnMode: presetState.returnMode,
+        isUnderLoad,
+        shatterScale,
+      },
+    });
+    // #endregion agent log
+
+    if (presetState.returnMode === 'original') {
+      // #region agent log
+      logDebug({
+        hypothesisId: 'H2',
+        location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+        message: 'pointerDownIgnoredDuringReset',
+        data: { isReturning: presetState.isReturning },
+      });
+      // #endregion agent log
+      return;
+    }
     
     // Convert to viewBox coordinates for hit testing
     const clickX = point.x * viewBox.width;
@@ -936,10 +1045,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       // Get all clickable shapes in render order (shapes first, fragments on top)
       const clickableShapes: Shape[] = [];
 
-      const allowOriginalsDuringReset = presetState.returnMode === 'original';
       // Add original shapes that haven't been shattered
       shapes.forEach(shape => {
-        if (allowOriginalsDuringReset || !presetState.shatteredShapeIds.has(shape.id)) {
+        if (!presetState.shatteredShapeIds.has(shape.id)) {
           const transform = shapeTransforms.get(shape.id);
           const offsetX = transform?.x ?? 0;
           const offsetY = transform?.y ?? 0;
@@ -987,9 +1095,24 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           },
         });
       });
+      // #region agent log
+      logDebug({
+        hypothesisId: 'H2',
+        location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+        message: 'clickableShapes',
+        data: {
+          clickable: clickableShapes.length,
+          fragments: presetState.shardFragments.length,
+          originals: shapes.length,
+        },
+      });
+      // #endregion agent log
 
       // Find all shapes within the cursor radius (topmost last)
       const hitShapes: Shape[] = [];
+      // #region agent log
+      const hitStart = performance.now();
+      // #endregion agent log
       for (let i = clickableShapes.length - 1; i >= 0; i -= 1) {
         const shape = clickableShapes[i];
         const b = shape.bounds;
@@ -1003,10 +1126,44 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           hitShapes.push(shape);
         }
       }
+      // #region agent log
+      const hitDuration = performance.now() - hitStart;
+      if (hitDuration > 12) {
+        logDebug({
+          hypothesisId: 'H5',
+          location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+          message: 'hitTestSlow',
+          data: { hitDuration, clickable: clickableShapes.length, hits: hitShapes.length },
+        });
+      }
+      // #endregion agent log
+
+      if (hitShapes.length === 0) {
+        // #region agent log
+        logDebug({
+          hypothesisId: 'H5',
+          location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+          message: 'hitShapesEmpty',
+          data: { clickable: clickableShapes.length, cursorRadius },
+        });
+        // #endregion agent log
+      }
 
       if (hitShapes.length > 0) {
         const maxHitShapes = isUnderLoad ? 2 : 4;
         const limitedHitShapes = hitShapes.slice(0, maxHitShapes);
+        // #region agent log
+        logDebug({
+          hypothesisId: 'H2',
+          location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+          message: 'hitShapes',
+          data: {
+            hitShapes: hitShapes.length,
+            limited: limitedHitShapes.length,
+            maxHitShapes,
+          },
+        });
+        // #endregion agent log
         const fragmentsToRemove = new Set<string>();
         let combinedNewFragments: ShardFragment[] = [];
         const newShatteredIds = new Set(presetState.shatteredShapeIds);
@@ -1068,6 +1225,17 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             isReturning: false,
           };
         });
+        // #region agent log
+        const pointerDuration = performance.now() - pointerStart;
+        if (pointerDuration > 12) {
+          logDebug({
+            hypothesisId: 'H5',
+            location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+            message: 'pointerDownSlow',
+            data: { pointerDuration },
+          });
+        }
+        // #endregion agent log
         return;
       }
     }
@@ -1075,10 +1243,35 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     // Default click handling for other presets
     const preset = PRESETS[activePreset];
     setPresetState(prev => preset.initClick(prev, point, controls, shapes, viewBox, null));
+    // #region agent log
+    const pointerDuration = performance.now() - pointerStart;
+    if (pointerDuration > 12) {
+      logDebug({
+        hypothesisId: 'H5',
+        location: 'InteractiveHeroBanner.tsx:handlePointerDown',
+        message: 'pointerDownSlow',
+        data: { pointerDuration },
+      });
+    }
+    // #endregion agent log
   }, [activePreset, controls, shapes, viewBox, presetState]);
 
   const handleReset = useCallback(() => {
     setPresetState(prev => {
+      // #region agent log
+      logDebug({
+        hypothesisId: 'H1',
+        location: 'InteractiveHeroBanner.tsx:handleReset',
+        message: 'resetRequested',
+        data: {
+          fragments: prev.shardFragments.length,
+          shattered: prev.shatteredShapeIds.size,
+          isReturning: prev.isReturning,
+          returnMode: prev.returnMode,
+          clickTime: prev.clickTime,
+        },
+      });
+      // #endregion agent log
       if (prev.shardFragments.length === 0) {
         return createInitialState();
       }
@@ -1127,14 +1320,40 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       
       // Update preset state
       setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointer, effectiveControls, shapes, viewBox));
+      // #region agent log
+      if (dt > 0.05) {
+        logDebug({
+          hypothesisId: 'H6',
+          location: 'InteractiveHeroBanner.tsx:animate',
+          message: 'largeFrameDelta',
+          data: { dt },
+        });
+      }
+      // #endregion agent log
 
       const fragmentCount = presetStateRef.current.shardFragments.length;
       avgDtRef.current = avgDtRef.current * 0.9 + dt * 0.1;
       const overload = fragmentCount > LOAD_FRAGMENT_THRESHOLD || avgDtRef.current > LOAD_DT_THRESHOLD;
       const recovered = fragmentCount < LOAD_FRAGMENT_THRESHOLD * 0.8 && avgDtRef.current < LOAD_RECOVERY_THRESHOLD;
       if (!isUnderLoad && overload) {
+        // #region agent log
+        logDebug({
+          hypothesisId: 'H3',
+          location: 'InteractiveHeroBanner.tsx:animate',
+          message: 'underLoadEnabled',
+          data: { fragmentCount, avgDt: avgDtRef.current },
+        });
+        // #endregion agent log
         setIsUnderLoad(true);
       } else if (isUnderLoad && recovered) {
+        // #region agent log
+        logDebug({
+          hypothesisId: 'H3',
+          location: 'InteractiveHeroBanner.tsx:animate',
+          message: 'underLoadDisabled',
+          data: { fragmentCount, avgDt: avgDtRef.current },
+        });
+        // #endregion agent log
         setIsUnderLoad(false);
       }
       
