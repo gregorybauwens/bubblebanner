@@ -15,6 +15,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
+import { converter, formatHex } from 'culori';
 
 // ============================================================================
 // PASTE YOUR SVG MARKUP HERE (or pass via svgMarkup prop)
@@ -27,6 +28,15 @@ const STARTER_SVG = `<svg width="1312" height="312" viewBox="0 0 1312 312" fill=
 <rect x="1240" width="34" height="312" rx="17" fill="#E56100"/>
 <rect x="1290" width="22" height="312" rx="11" fill="#E74C00"/>
 </svg>`;
+
+export const DEFAULT_COLOR_STOPS = [
+  "#ECB300",
+  "#EB9F00",
+  "#EF8A00",
+  "#EB7800",
+  "#E56100",
+  "#E74C00",
+];
 
 // ============================================================================
 // TYPES
@@ -120,6 +130,40 @@ interface Controls {
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
+const toHsv = converter('hsv');
+const hsvToHex = (color: { h?: number; s?: number; v?: number }) =>
+  formatHex({ mode: 'hsv', h: color.h ?? 0, s: color.s ?? 0, v: color.v ?? 0 });
+
+const interpolateHue = (a: number, b: number, t: number) => {
+  const delta = ((b - a + 540) % 360) - 180;
+  return (a + delta * t + 360) % 360;
+};
+
+const getPaletteColor = (t: number, stops: string[]) => {
+  if (stops.length === 0) return '#ECB300';
+  if (stops.length === 1) return stops[0];
+  const scaled = clamp(t, 0, 1) * (stops.length - 1);
+  const index = Math.floor(scaled);
+  const localT = scaled - index;
+  const a = toHsv(stops[index]) ?? { h: 0, s: 0, v: 0 };
+  const b = toHsv(stops[Math.min(index + 1, stops.length - 1)]) ?? { h: 0, s: 0, v: 0 };
+  const h = interpolateHue(a.h ?? 0, b.h ?? 0, localT);
+  const s = lerp(a.s ?? 0, b.s ?? 0, localT);
+  const v = lerp(a.v ?? 0, b.v ?? 0, localT);
+  return hsvToHex({ h, s, v });
+};
+
+const applyFillToShape = (shape: Shape, color: string): Shape => {
+  const updatedElement = shape.element.includes('fill=')
+    ? shape.element.replace(/fill="[^"]*"/, `fill="${color}"`)
+    : shape.element.replace(/<([^\\s>]+)/, `<$1 fill="${color}"`);
+  return {
+    ...shape,
+    fill: color,
+    attrs: { ...shape.attrs, fill: color },
+    element: updatedElement,
+  };
+};
 const BURST_WINDOW_S = 0.6;
 const MAX_BURST_CLICKS = 9;
 const MAX_TOTAL_FRAGMENTS = 320;
@@ -136,12 +180,12 @@ const DEFAULT_CONTROLS: Controls = {
   spring: 0.3,
   damping: 0.5,
   timeScale: 1,
-  shardSpread: 0.3,
+  shardSpread: 0.2,
   settleTime: .65,
   returnSpring: 2.2,
   settleDamping: 1.9,
-  explosionForce: 8.0,
-  explosionSpin: 1.8,
+  explosionForce: 0.2,
+  explosionSpin: 4.8,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -416,8 +460,8 @@ const createFragmentsFromShape = (
     const finalAngle = angleFromClick + angleVariation;
     
     // Explosion force calculation - much more intense burst
-    const baseSpeed = controls.explosionForce * 2.5;
-    const speedVariation = 0.5 + seededRandom(seed * 4) * 1.0; // More variation
+    const baseSpeed = controls.explosionForce * 0.75;
+    const speedVariation = 0.7 + seededRandom(seed * 4) * 1.0; // More variation
     const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
     
     // Distance-based impulse - closer = stronger explosion
@@ -754,12 +798,14 @@ interface InteractiveHeroBannerProps {
   svgMarkup?: string;
   className?: string;
   renderControls?: (props: ControlPanelProps) => React.ReactNode;
+  colorStops?: string[];
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   svgMarkup = STARTER_SVG,
   className = '',
   renderControls,
+  colorStops,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -768,7 +814,22 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const clickBurstRef = useRef<number[]>([]);
   
   // Parse SVG
-  const { shapes, viewBox } = useMemo(() => parseSVG(svgMarkup), [svgMarkup]);
+  const { shapes, viewBox } = useMemo(() => {
+    const parsed = parseSVG(svgMarkup);
+    const stops = colorStops && colorStops.length > 0 ? colorStops : DEFAULT_COLOR_STOPS;
+    if (svgMarkup === STARTER_SVG && parsed.shapes.length > 0) {
+      const minX = Math.min(...parsed.shapes.map(shape => shape.centroid.x));
+      const maxX = Math.max(...parsed.shapes.map(shape => shape.centroid.x));
+      const range = Math.max(1, maxX - minX);
+      const coloredShapes = parsed.shapes.map((shape) => {
+        const t = (shape.centroid.x - minX) / range;
+        const color = getPaletteColor(t, stops);
+        return applyFillToShape(shape, color);
+      });
+      return { shapes: coloredShapes, viewBox: parsed.viewBox };
+    }
+    return parsed;
+  }, [svgMarkup, colorStops]);
   const firstFourShapeIds = useMemo(() => {
     return shapes
       .slice()
@@ -875,9 +936,10 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       // Get all clickable shapes in render order (shapes first, fragments on top)
       const clickableShapes: Shape[] = [];
 
+      const allowOriginalsDuringReset = presetState.returnMode === 'original';
       // Add original shapes that haven't been shattered
       shapes.forEach(shape => {
-        if (!presetState.shatteredShapeIds.has(shape.id)) {
+        if (allowOriginalsDuringReset || !presetState.shatteredShapeIds.has(shape.id)) {
           const transform = shapeTransforms.get(shape.id);
           const offsetX = transform?.x ?? 0;
           const offsetY = transform?.y ?? 0;
@@ -1028,6 +1090,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         returnMode: 'original',
         lastExplosionTime: prev.clickTime,
         lastClickTime: prev.clickTime,
+        shatteredShapeIds: new Set(),
       };
     });
   }, []);
