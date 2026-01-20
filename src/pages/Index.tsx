@@ -21,7 +21,7 @@ const ControlPanel = ({
   >
     <div className="flex flex-wrap gap-4 items-start">
       {/* Hover Controls */}
-      <div className="min-w-[140px] flex-1">
+      <div className="min-w-[180px] flex-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
         <div className="space-y-1">
           <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControl("hoverStrength", v)} min={0} max={3} />
@@ -30,7 +30,7 @@ const ControlPanel = ({
       </div>
 
       {/* Physics Controls */}
-      <div className="min-w-[140px] flex-1">
+      <div className="min-w-[180px] flex-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Physics</label>
         <div className="space-y-1">
           <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControl("spring", v)} min={0.1} max={2} />
@@ -39,7 +39,7 @@ const ControlPanel = ({
       </div>
 
       {/* Shatter controls */}
-      <div className="min-w-[140px] flex-1">
+      <div className="min-w-[180px] flex-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
         <div className="space-y-1">
           <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControl("shardSpread", v)} min={0.1} max={3} />
@@ -49,7 +49,7 @@ const ControlPanel = ({
       </div>
 
       {/* Settle controls */}
-      <div className="min-w-[140px] flex-1">
+      <div className="min-w-[180px] flex-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Settle</label>
         <div className="space-y-1">
           <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControl("settleTime", v)} min={0} max={5} />
@@ -59,7 +59,7 @@ const ControlPanel = ({
       </div>
 
       {/* Action buttons */}
-      <div className="flex flex-col gap-1.5 min-w-[70px]">
+      <div className="flex flex-col gap-1.5 min-w-[90px]">
         <button onClick={onReset} className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors">
           Reset
         </button>
