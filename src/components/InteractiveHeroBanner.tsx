@@ -1258,6 +1258,20 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 
   const handleReset = useCallback(() => {
     setPresetState(prev => {
+      if (prev.returnMode === 'original' && prev.isReturning) {
+        // #region agent log
+        logDebug({
+          hypothesisId: 'H1',
+          location: 'InteractiveHeroBanner.tsx:handleReset',
+          message: 'resetIgnoredAlreadyResetting',
+          data: {
+            fragments: prev.shardFragments.length,
+            returnMode: prev.returnMode,
+          },
+        });
+        // #endregion agent log
+        return prev;
+      }
       // #region agent log
       logDebug({
         hypothesisId: 'H1',
@@ -1291,6 +1305,17 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === 'r') {
+        if (event.repeat) {
+          // #region agent log
+          logDebug({
+            hypothesisId: 'H1',
+            location: 'InteractiveHeroBanner.tsx:onKeyDown',
+            message: 'resetKeyRepeatIgnored',
+            data: { key: event.key },
+          });
+          // #endregion agent log
+          return;
+        }
         handleReset();
       }
     };
