@@ -140,7 +140,7 @@ const DEFAULT_CONTROLS: Controls = {
   settleTime: .65,
   returnSpring: 2.2,
   settleDamping: 1.9,
-  explosionForce: 1.75,
+  explosionForce: 0.2,
   explosionSpin: 4.8,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
@@ -416,7 +416,7 @@ const createFragmentsFromShape = (
     const finalAngle = angleFromClick + angleVariation;
     
     // Explosion force calculation - much more intense burst
-    const baseSpeed = controls.explosionForce * 1.75;
+    const baseSpeed = controls.explosionForce * 0.75;
     const speedVariation = 0.7 + seededRandom(seed * 4) * 1.0; // More variation
     const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
     
