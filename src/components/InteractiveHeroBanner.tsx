@@ -749,6 +749,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   // Controls state
   const [controls, setControls] = useState<Controls>(() => {
     if (typeof window === 'undefined') return DEFAULT_CONTROLS;
+    if (window.location.pathname.startsWith('/embed')) return DEFAULT_CONTROLS;
     try {
       const saved = window.localStorage.getItem(CONTROLS_STORAGE_KEY);
       if (!saved) return DEFAULT_CONTROLS;
@@ -1045,6 +1046,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/embed')) {
+      return;
+    }
     try {
       window.localStorage.setItem(CONTROLS_STORAGE_KEY, JSON.stringify(controls));
     } catch {
