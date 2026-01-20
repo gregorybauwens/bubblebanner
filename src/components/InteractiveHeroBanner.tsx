@@ -127,7 +127,7 @@ const LOAD_FRAGMENT_THRESHOLD = 180;
 const LOAD_DT_THRESHOLD = 0.02;
 const LOAD_RECOVERY_THRESHOLD = 0.018;
 const SHOW_LOAD_INDICATOR = false;
-const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
+const CONTROLS_STORAGE_KEY = '';
 const DEFAULT_CONTROLS: Controls = {
   hoverStrength: 0.2,
   hoverRadius: 0.5,
