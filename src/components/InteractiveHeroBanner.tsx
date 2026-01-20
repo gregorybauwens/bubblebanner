@@ -136,12 +136,12 @@ const DEFAULT_CONTROLS: Controls = {
   spring: 0.3,
   damping: 0.5,
   timeScale: 1,
-  shardSpread: 0.3,
+  shardSpread: 0.2,
   settleTime: .65,
   returnSpring: 2.2,
   settleDamping: 1.9,
-  explosionForce: 8.0,
-  explosionSpin: 1.8,
+  explosionForce: 1.75,
+  explosionSpin: 4.8,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -416,8 +416,8 @@ const createFragmentsFromShape = (
     const finalAngle = angleFromClick + angleVariation;
     
     // Explosion force calculation - much more intense burst
-    const baseSpeed = controls.explosionForce * 2.5;
-    const speedVariation = 0.5 + seededRandom(seed * 4) * 1.0; // More variation
+    const baseSpeed = controls.explosionForce * 1.75;
+    const speedVariation = 0.7 + seededRandom(seed * 4) * 1.0; // More variation
     const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
     
     // Distance-based impulse - closer = stronger explosion
@@ -875,9 +875,10 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       // Get all clickable shapes in render order (shapes first, fragments on top)
       const clickableShapes: Shape[] = [];
 
+      const allowOriginalsDuringReset = presetState.returnMode === 'original';
       // Add original shapes that haven't been shattered
       shapes.forEach(shape => {
-        if (!presetState.shatteredShapeIds.has(shape.id)) {
+        if (allowOriginalsDuringReset || !presetState.shatteredShapeIds.has(shape.id)) {
           const transform = shapeTransforms.get(shape.id);
           const offsetX = transform?.x ?? 0;
           const offsetY = transform?.y ?? 0;
@@ -1028,6 +1029,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         returnMode: 'original',
         lastExplosionTime: prev.clickTime,
         lastClickTime: prev.clickTime,
+        shatteredShapeIds: new Set(),
       };
     });
   }, []);
