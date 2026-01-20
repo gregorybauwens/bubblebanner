@@ -1117,7 +1117,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
 
   const resetProgress = presetState.returnMode === 'original'
-    ? clamp((presetState.clickTime - presetState.returnStartTime) / 0.4, 0, 1)
+    ? clamp((presetState.clickTime - presetState.returnStartTime) / 0.25, 0, 1)
     : 0;
 
   return (
