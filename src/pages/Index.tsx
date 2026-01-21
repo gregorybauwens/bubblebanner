@@ -1,7 +1,25 @@
-import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, type ControlPanelProps } from "@/components/InteractiveHeroBanner";
+import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, type ControlPanelProps, type Controls } from "@/components/InteractiveHeroBanner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SketchPicker } from "react-color";
+import SavedPresetsPanel from "@/presets/SavedPresetsPanel";
+import {
+  decodePresetFromUrl,
+  loadPresetsFromStorage,
+  savePresetsToStorage,
+  type BannerPreset,
+} from "@/presets/presets";
+
+type ControlPanelExtraProps = {
+  colorStops: string[];
+  setColorStops: (stops: string[]) => void;
+  selectedPreset: string;
+  setSelectedPreset: (name: string) => void;
+  savedPresets: BannerPreset[];
+  setSavedPresets: (presets: BannerPreset[]) => void;
+  pendingPreset: BannerPreset | null;
+  clearPendingPreset: () => void;
+};
 
 const ControlPanel = ({
   controls,
@@ -9,7 +27,32 @@ const ControlPanel = ({
   onReset,
   isPaused,
   setIsPaused,
-}: ControlPanelProps) => (
+  colorStops,
+  setColorStops,
+  selectedPreset,
+  setSelectedPreset,
+  savedPresets,
+  setSavedPresets,
+  pendingPreset,
+  clearPendingPreset,
+}: ControlPanelProps & ControlPanelExtraProps) => {
+  useEffect(() => {
+    if (!pendingPreset) return;
+    setColorStops(pendingPreset.colorStops);
+    Object.entries(pendingPreset.controls).forEach(([key, value]) => {
+      updateControl(key as keyof Controls, value as number);
+    });
+    setSelectedPreset(pendingPreset.name?.trim() || "Custom");
+    clearPendingPreset();
+  }, [
+    pendingPreset,
+    setColorStops,
+    updateControl,
+    setSelectedPreset,
+    clearPendingPreset,
+  ]);
+
+  return (
   <div
     className="mt-6 p-4 rounded-xl text-xs"
     style={{
@@ -68,12 +111,24 @@ const ControlPanel = ({
         </button>
       </div>
     </div>
+    <SavedPresetsPanel
+      controls={controls}
+      colorStops={colorStops}
+      updateControl={updateControl}
+      setColorStops={setColorStops}
+      savedPresets={savedPresets}
+      setSavedPresets={setSavedPresets}
+      onSelectPresetName={setSelectedPreset}
+    />
   </div>
-);
+  );
+};
 
 const Index = () => {
   const [colorStops, setColorStops] = useState<string[]>(DEFAULT_COLOR_STOPS);
   const [selectedPreset, setSelectedPreset] = useState<string>("Original");
+  const [savedPresets, setSavedPresets] = useState<BannerPreset[]>(() => loadPresetsFromStorage());
+  const [pendingPreset, setPendingPreset] = useState<BannerPreset | null>(null);
   const [openPickerIndex, setOpenPickerIndex] = useState<number | null>(null);
   const normalizedStops = useMemo(
     () => colorStops.map((stop) => stop.trim().toUpperCase()),
@@ -170,12 +225,39 @@ const Index = () => {
     []
   );
 
+  useEffect(() => {
+    savePresetsToStorage(savedPresets);
+  }, [savedPresets]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get("preset");
+    if (!encoded) return;
+    const decoded = decodePresetFromUrl(encoded);
+    if (decoded) {
+      setPendingPreset(decoded);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-[1312px]">
         <InteractiveHeroBanner
           colorStops={normalizedStops}
-          renderControls={(props) => <ControlPanel {...props} />}
+          renderControls={(props) => (
+            <ControlPanel
+              {...props}
+              colorStops={normalizedStops}
+              setColorStops={setColorStops}
+              selectedPreset={selectedPreset}
+              setSelectedPreset={setSelectedPreset}
+              savedPresets={savedPresets}
+              setSavedPresets={setSavedPresets}
+              pendingPreset={pendingPreset}
+              clearPendingPreset={() => setPendingPreset(null)}
+            />
+          )}
         />
         <div
           className="mt-4 p-4 rounded-xl text-xs"
