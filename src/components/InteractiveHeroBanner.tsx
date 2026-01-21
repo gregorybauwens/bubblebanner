@@ -1375,7 +1375,7 @@ export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onCh
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
       className="flex-1 h-1 bg-neutral-700 rounded-full appearance-none cursor-pointer"
-      style={{ accentColor: '#ECB300' }}
+      style={{ accentColor: '#A3A3A3' }}
     />
     <span className="w-8 text-right text-neutral-500 text-[10px] tabular-nums">{value.toFixed(1)}</span>
   </div>
