@@ -35,7 +35,6 @@ const ColorPickerGradient: React.FC<ColorPickerGradientProps> = ({ value, onChan
     hideColorTypeBtns
     hidePresets
     hideEyeDrop
-    hideAdvancedSliders
     hideColorGuide
     hideInputType
     hideGradientType

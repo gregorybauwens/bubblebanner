@@ -316,7 +316,7 @@ const Index = () => {
               <span className="text-[10px] uppercase tracking-wider text-neutral-500">Colors</span>
             {normalizedStops.map((stop, index) => (
               <Popover
-                key={`${stop}-${index}`}
+                key={`color-stop-${index}`}
                 open={openPickerIndex === index}
                 onOpenChange={(open) => setOpenPickerIndex(open ? index : null)}
               >
@@ -336,8 +336,12 @@ const Index = () => {
                   align="start"
                   sideOffset={8}
                   className="w-72 p-3"
-                  onInteractOutside={(event) => event.preventDefault()}
                 >
+                  <div
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onPointerMove={(event) => event.stopPropagation()}
+                    onPointerUp={(event) => event.stopPropagation()}
+                  >
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-[10px] uppercase tracking-wider text-neutral-500">Picker</span>
                     <button
@@ -358,6 +362,7 @@ const Index = () => {
                       setSelectedPreset("Custom");
                     }}
                   />
+                  </div>
                 </PopoverContent>
               </Popover>
             ))}
