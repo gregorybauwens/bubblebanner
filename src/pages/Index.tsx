@@ -1,7 +1,7 @@
 import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, type ControlPanelProps, type Controls } from "@/components/InteractiveHeroBanner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEffect, useMemo, useState } from "react";
-import { SketchPicker } from "react-color";
+import ColorPickerGradient from "@/components/ColorPickerGradient";
 import SavedPresetsPanel from "@/presets/SavedPresetsPanel";
 import {
   decodePresetFromUrl,
@@ -19,6 +19,7 @@ type ControlPanelExtraProps = {
   setSavedPresets: (presets: BannerPreset[]) => void;
   pendingPreset: BannerPreset | null;
   clearPendingPreset: () => void;
+  onSyncBannerState: (controls: Controls, updateControl: (key: keyof Controls, value: number) => void) => void;
 };
 
 const ControlPanel = ({
@@ -35,7 +36,12 @@ const ControlPanel = ({
   setSavedPresets,
   pendingPreset,
   clearPendingPreset,
+  onSyncBannerState,
 }: ControlPanelProps & ControlPanelExtraProps) => {
+  useEffect(() => {
+    onSyncBannerState(controls, updateControl);
+  }, [controls, updateControl, onSyncBannerState]);
+
   useEffect(() => {
     if (!pendingPreset) return;
     setColorStops(pendingPreset.colorStops);
@@ -111,15 +117,6 @@ const ControlPanel = ({
         </button>
       </div>
     </div>
-    <SavedPresetsPanel
-      controls={controls}
-      colorStops={colorStops}
-      updateControl={updateControl}
-      setColorStops={setColorStops}
-      savedPresets={savedPresets}
-      setSavedPresets={setSavedPresets}
-      onSelectPresetName={setSelectedPreset}
-    />
   </div>
   );
 };
@@ -129,6 +126,8 @@ const Index = () => {
   const [selectedPreset, setSelectedPreset] = useState<string>("Original");
   const [savedPresets, setSavedPresets] = useState<BannerPreset[]>(() => loadPresetsFromStorage());
   const [pendingPreset, setPendingPreset] = useState<BannerPreset | null>(null);
+  const [bannerControls, setBannerControls] = useState<Controls | null>(null);
+  const [bannerUpdateControl, setBannerUpdateControl] = useState<((key: keyof Controls, value: number) => void) | null>(null);
   const [openPickerIndex, setOpenPickerIndex] = useState<number | null>(null);
   const normalizedStops = useMemo(
     () => colorStops.map((stop) => stop.trim().toUpperCase()),
@@ -241,7 +240,7 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-transparent flex flex-col items-center justify-center px-6 pt-16 pb-16">
       <div className="w-full max-w-[1312px]">
         <InteractiveHeroBanner
           colorStops={normalizedStops}
@@ -256,6 +255,10 @@ const Index = () => {
               setSavedPresets={setSavedPresets}
               pendingPreset={pendingPreset}
               clearPendingPreset={() => setPendingPreset(null)}
+              onSyncBannerState={(controls, updateControl) => {
+                setBannerControls(controls);
+                setBannerUpdateControl(() => updateControl);
+              }}
             />
           )}
         />
@@ -333,30 +336,26 @@ const Index = () => {
                   align="start"
                   sideOffset={8}
                   className="w-72 p-3"
+                  onInteractOutside={(event) => event.preventDefault()}
                 >
-                  <SketchPicker
-                    color={stop}
-                    disableAlpha
-                    onChange={(color) => {
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider text-neutral-500">Picker</span>
+                    <button
+                      type="button"
+                      onClick={() => setOpenPickerIndex(null)}
+                      className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <ColorPickerGradient
+                    value={stop}
+                    idSuffix={`color-${index}`}
+                    onChange={(nextColor) => {
                       const next = [...normalizedStops];
-                      next[index] = color.hex.toUpperCase();
+                      next[index] = nextColor;
                       setColorStops(next);
                       setSelectedPreset("Custom");
-                    }}
-                    styles={{
-                      default: {
-                        picker: {
-                          background: "transparent",
-                          boxShadow: "none",
-                          width: "100%",
-                        },
-                        input: {
-                          background: "transparent",
-                          color: "#E5E5E5",
-                          boxShadow: "none",
-                        },
-                        label: { color: "#A3A3A3" },
-                      },
                     }}
                   />
                 </PopoverContent>
@@ -373,6 +372,17 @@ const Index = () => {
             </button>
             </div>
           </div>
+          {bannerControls && bannerUpdateControl && (
+            <SavedPresetsPanel
+              controls={bannerControls}
+              colorStops={normalizedStops}
+              updateControl={bannerUpdateControl}
+              setColorStops={setColorStops}
+              savedPresets={savedPresets}
+              setSavedPresets={setSavedPresets}
+              onSelectPresetName={setSelectedPreset}
+            />
+          )}
         </div>
       </div>
     </div>
