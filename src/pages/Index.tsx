@@ -118,7 +118,7 @@ const ControlPanel = ({
       </div>
     </div>
   </div>
-  );
+);
 };
 
 const Index = () => {

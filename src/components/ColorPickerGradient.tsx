@@ -31,7 +31,7 @@ const ColorPickerGradient: React.FC<ColorPickerGradientProps> = ({ value, onChan
     hideInputs={false}
     hideOpacity
     hideHue={false}
-    hideControls
+    hideControls={false}
     hideColorTypeBtns
     hidePresets
     hideEyeDrop

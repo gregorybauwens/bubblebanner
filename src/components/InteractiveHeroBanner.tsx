@@ -570,7 +570,7 @@ const PRESETS: Record<PresetKey, {
       // Check if we should start settling (no clicks for a while)
       const timeSinceLastClick = newClickTime - state.lastClickTime;
       const timeSinceLastExplosion = newClickTime - state.lastExplosionTime;
-      const shouldStartSettling = timeSinceLastClick > settleDelay &&
+      const shouldStartSettling = timeSinceLastClick > settleDelay && 
                                   timeSinceLastExplosion > 0.65 &&
                                   state.shardFragments.length > 0 && 
                                   !state.isReturning;
@@ -654,13 +654,13 @@ const PRESETS: Record<PresetKey, {
       const updatedFragments = state.shardFragments.map((frag, index) => {
         if (state.isReturning) {
           const targetX = state.returnMode === 'original' ? 0 : (() => {
-            const { col, row } = finalTargets[index] || { col: 0, row: 0 };
-            const targetCenterX = gutter + col * (cellWidth + gutter) + cellWidth / 2;
+          const { col, row } = finalTargets[index] || { col: 0, row: 0 };
+          const targetCenterX = gutter + col * (cellWidth + gutter) + cellWidth / 2;
             return targetCenterX - frag.shape.centroid.x;
           })();
           const targetY = state.returnMode === 'original' ? 0 : (() => {
             const { col, row } = finalTargets[index] || { col: 0, row: 0 };
-            const targetCenterY = gutter + row * (cellHeight + gutter) + cellHeight / 2;
+          const targetCenterY = gutter + row * (cellHeight + gutter) + cellHeight / 2;
             return targetCenterY - frag.shape.centroid.y;
           })();
           
@@ -740,7 +740,7 @@ const PRESETS: Record<PresetKey, {
           const speed = Math.hypot(frag.vx, frag.vy) + Math.abs(frag.vr);
           return Math.abs(frag.offsetX) < 0.5 && Math.abs(frag.offsetY) < 0.5 && speed < 5;
         }));
-
+      
       newState.shardFragments = updatedFragments;
       newState.lastExplosionTime = hasExploding ? newClickTime : state.lastExplosionTime;
       if (isResetting && !newState.isReturning) {
@@ -943,7 +943,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     if (activePreset === 'voronoi') {
       // Get all clickable shapes in render order (shapes first, fragments on top)
       const clickableShapes: Shape[] = [];
-
+      
       // Add original shapes that haven't been shattered
       shapes.forEach(shape => {
         if (!presetState.shatteredShapeIds.has(shape.id)) {
@@ -994,7 +994,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           },
         });
       });
-
+      
       // Find all shapes within the cursor radius (topmost last)
       const hitShapes: Shape[] = [];
       for (let i = clickableShapes.length - 1; i >= 0; i -= 1) {
@@ -1005,7 +1005,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         const closestX = clamp(clickX, b.x, b.x + b.width);
         const closestY = clamp(clickY, b.y, b.y + b.height);
         const dist = distance(clickX, clickY, closestX, closestY);
-
+        
         if (dist <= cursorRadius) {
           hitShapes.push(shape);
         }
@@ -1013,7 +1013,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 
       if (hitShapes.length === 0) {
       }
-
+      
       if (hitShapes.length > 0) {
         const maxHitShapes = isUnderLoad ? 2 : 4;
         const limitedHitShapes = hitShapes.slice(0, maxHitShapes);
@@ -1025,30 +1025,30 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 
         limitedHitShapes.forEach((hitShape) => {
           const isFragment = hitShape.id.startsWith('frag-');
-          let fragmentToRemove: ShardFragment | null = null;
-
-          if (isFragment) {
+        let fragmentToRemove: ShardFragment | null = null;
+        
+        if (isFragment) {
             fragmentToRemove = presetState.shardFragments.find(f => f.shape.id === hitShape.id) || null;
             if (!fragmentToRemove) return;
           } else {
             newShatteredIds.add(hitShape.id);
-          }
-
-          const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
+        }
+        
+        const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
           const shouldForceSixPieces = !isFragment &&
             !presetState.shatteredShapeIds.has(hitShape.id) &&
             firstFourShapeIds.includes(hitShape.id);
-          const newFragments = createFragmentsFromShape(
+        const newFragments = createFragmentsFromShape(
             hitShape,
-            point,
-            viewBox,
-            controls,
-            generation,
-            presetState.clickTime,
+          point,
+          viewBox,
+          controls,
+          generation,
+          presetState.clickTime,
             effectiveShatterScale,
             shouldForceSixPieces ? 6 : undefined
-          );
-
+        );
+        
           if (fragmentToRemove) {
             fragmentsToRemove.add(fragmentToRemove.id);
           }
@@ -1067,7 +1067,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
               .sort((a, b) => b.spawnTime - a.spawnTime)
               .slice(0, MAX_TOTAL_FRAGMENTS);
           }
-
+          
           return {
             ...prev,
             shardFragments: nextFragments,

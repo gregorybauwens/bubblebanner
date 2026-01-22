@@ -31,7 +31,7 @@ const applyPreset = (
   Object.entries(preset.controls).forEach(([key, value]) => {
     updateControl(key as keyof Controls, value as number);
   });
-  onSelectPresetName(preset.name?.trim() || "Custom");
+  onSelectPresetName("Custom");
 };
 
 const copyPresetLink = async (preset: BannerPreset) => {
