@@ -174,18 +174,18 @@ const LOAD_RECOVERY_THRESHOLD = 0.018;
 const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 const DEFAULT_CONTROLS: Controls = {
-  hoverStrength: 0.3,
-  hoverRadius: 0.5,
+  hoverStrength: 1.2,
+  hoverRadius: 0.3,
   clickStrength: 1,
-  spring: 0.3,
-  damping: 0.5,
+  spring: 0.9,
+  damping: 2.0,
   timeScale: 1,
-  shardSpread: 0.2,
-  settleTime: .65,
-  returnSpring: 2.2,
-  settleDamping: 1.9,
-  explosionForce: 0.2,
-  explosionSpin: 4.8,
+  shardSpread: 1.2,
+  settleTime: 0.3,
+  returnSpring: 3.4,
+  settleDamping: 2.0,
+  explosionForce: 0.8,
+  explosionSpin: 1.5,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
