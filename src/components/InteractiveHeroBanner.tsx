@@ -180,12 +180,12 @@ const DEFAULT_CONTROLS: Controls = {
   spring: 0.9,
   damping: 2.0,
   timeScale: 1,
-  shardSpread: 1.2,
+  shardSpread: 1.0,
   settleTime: 0.3,
   returnSpring: 3.4,
   settleDamping: 2.0,
-  explosionForce: 0.8,
-  explosionSpin: 1.5,
+  explosionForce: 0.7,
+  explosionSpin: 1.4,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
