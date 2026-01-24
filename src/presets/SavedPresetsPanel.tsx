@@ -1,13 +1,15 @@
 import React from "react";
 import type { Controls } from "@/components/InteractiveHeroBanner";
 import type { BannerPreset } from "@/presets/presets";
-import { encodePresetForUrl } from "@/presets/presets";
 
 const MAX_SAVED_PRESETS = 5;
 
 type SavedPresetsPanelProps = {
   controls: Controls;
   colorStops: string[];
+  selectedColorPresetName: string;
+  activeSavedPresetId: string | null;
+  onActivateSavedPresetId: (id: string | null) => void;
   updateControl: (key: keyof Controls, value: number) => void;
   setColorStops: (stops: string[]) => void;
   savedPresets: BannerPreset[];
@@ -34,20 +36,12 @@ const applyPreset = (
   onSelectPresetName("Custom");
 };
 
-const copyPresetLink = async (preset: BannerPreset) => {
-  if (typeof window === "undefined") return;
-  const encoded = encodePresetForUrl(preset);
-  const url = `${window.location.origin}/?preset=${encoded}`;
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch {
-    window.prompt("Copy this preset URL:", url);
-  }
-};
-
 const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
   controls,
   colorStops,
+  selectedColorPresetName,
+  activeSavedPresetId,
+  onActivateSavedPresetId,
   updateControl,
   setColorStops,
   savedPresets,
@@ -58,32 +52,39 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
 
   const handleSave = () => {
     if (atLimit) return;
-    const nameInput = window.prompt("Preset name (optional):", "");
-    if (nameInput === null) return;
-    const trimmedName = nameInput.trim();
-    const newPreset: BannerPreset = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-      name: trimmedName || undefined,
-      createdAt: Date.now(),
-      controls: { ...controls },
-      colorStops: [...colorStops],
-    };
-    setSavedPresets([newPreset, ...savedPresets]);
-  };
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const createdAt = Date.now();
+    // Avoid `window.prompt()` because it's often blocked (especially in embeds/iframes).
+    // Save immediately, and allow renaming later.
+    setSavedPresets((prev) => {
+      const baseName =
+        selectedColorPresetName?.trim() && selectedColorPresetName !== "Custom"
+          ? selectedColorPresetName.trim()
+          : "Custom";
 
-  const handleRename = (preset: BannerPreset) => {
-    const current = preset.name ?? "";
-    const nextName = window.prompt("Rename preset:", current);
-    if (nextName === null) return;
-    const trimmed = nextName.trim();
-    setSavedPresets(
-      savedPresets.map((item) =>
-        item.id === preset.id ? { ...item, name: trimmed || undefined } : item
-      )
-    );
+      // Generate a friendly deduped name: "Nebula", "Nebula 2", "Nebula 3", ...
+      const existing = prev
+        .map((p) => p.name?.trim() || "")
+        .filter((name) => name === baseName || name.startsWith(`${baseName} `));
+
+      const nextNumber = existing.length + 1;
+      const dedupedName = existing.length === 0 ? baseName : `${baseName} ${nextNumber}`;
+
+      const newPreset: BannerPreset = {
+        id,
+        name: dedupedName,
+        createdAt,
+        controls: { ...controls },
+        colorStops: [...colorStops],
+      };
+
+      return [newPreset, ...prev].slice(0, MAX_SAVED_PRESETS);
+    });
+    onActivateSavedPresetId(id);
   };
 
   const handleDelete = (preset: BannerPreset) => {
+    if (activeSavedPresetId === preset.id) onActivateSavedPresetId(null);
     setSavedPresets(savedPresets.filter((item) => item.id !== preset.id));
   };
 
@@ -115,7 +116,7 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
           Limit reached (5)
         </div>
       )}
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {savedPresets.length === 0 && (
           <div className="text-[10px] text-neutral-500">
             No presets saved yet.
@@ -124,37 +125,41 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
         {savedPresets.map((preset, index) => (
           <div
             key={preset.id}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-white/5 bg-neutral-900/40 px-2 py-2"
+            className="flex items-center gap-2"
           >
-            <div className="flex-1 min-w-[180px]">
-              <div className="text-[11px] text-neutral-200">
-                {formatPresetLabel(preset, index)}
-              </div>
-              <div className="text-[10px] text-neutral-500">
-                {formatTimestamp(preset.createdAt)}
-              </div>
-            </div>
+            {/*
+              Pill styling matches the color preset buttons above:
+              selected = neutral-700 + border-neutral-500
+            */}
             <button
-              onClick={() => applyPreset(preset, updateControl, setColorStops, onSelectPresetName)}
-              className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+              onClick={() => {
+                onActivateSavedPresetId(preset.id);
+                applyPreset(preset, updateControl, setColorStops, onSelectPresetName);
+              }}
+              title={`Load • ${formatTimestamp(preset.createdAt)}`}
+              className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border inline-flex items-center gap-2 ${
+                activeSavedPresetId === preset.id
+                  ? "bg-neutral-700 text-neutral-100 border-neutral-500"
+                  : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-transparent"
+              }`}
             >
-              Load
-            </button>
-            <button
-              onClick={() => handleRename(preset)}
-              className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
-            >
-              Rename
-            </button>
-            <button
-              onClick={() => copyPresetLink(preset)}
-              className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
-            >
-              Copy Embed Link
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex -space-x-1">
+                  {(preset.colorStops || []).slice(0, 3).map((c, i) => (
+                    <span
+                      key={`${preset.id}-swatch-${i}`}
+                      className="h-3 w-3 rounded border border-white/10"
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </span>
+                <span>{formatPresetLabel(preset, index)}</span>
+              </span>
             </button>
             <button
               onClick={() => handleDelete(preset)}
-              className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+              title="Delete"
+              className="px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-transparent"
             >
               Delete
             </button>

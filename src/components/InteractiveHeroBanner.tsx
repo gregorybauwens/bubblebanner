@@ -803,6 +803,8 @@ interface InteractiveHeroBannerProps {
   className?: string;
   renderControls?: (props: ControlPanelProps) => React.ReactNode;
   colorStops?: string[];
+  onFirstInteraction?: () => void;
+  onResetComplete?: () => void;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
@@ -810,24 +812,33 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   className = '',
   renderControls,
   colorStops,
+  onFirstInteraction,
+  onResetComplete,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const [activePreset] = useState<PresetKey>('voronoi');
   const [isPaused, setIsPaused] = useState(false);
   const clickBurstRef = useRef<number[]>([]);
+  const hasInteractedRef = useRef(false);
+  const resetInFlightRef = useRef(false);
   
   // Parse SVG
   const { shapes, viewBox } = useMemo(() => {
     const parsed = parseSVG(svgMarkup);
     const stops = colorStops && colorStops.length > 0 ? colorStops : DEFAULT_COLOR_STOPS;
     if (svgMarkup === STARTER_SVG && parsed.shapes.length > 0) {
-      const minX = Math.min(...parsed.shapes.map(shape => shape.centroid.x));
-      const maxX = Math.max(...parsed.shapes.map(shape => shape.centroid.x));
-      const range = Math.max(1, maxX - minX);
-      const coloredShapes = parsed.shapes.map((shape) => {
-        const t = (shape.centroid.x - minX) / range;
-        const color = getPaletteColor(t, stops);
+      // Map stops -> shapes left-to-right (discrete), so each stop reliably affects a shape.
+      // This avoids "dead" stops when using continuous interpolation and the shape count is small.
+      const ordered = parsed.shapes
+        .slice()
+        .sort((a, b) => a.centroid.x - b.centroid.x);
+      const n = ordered.length;
+      const k = Math.max(1, stops.length);
+      const coloredShapes = ordered.map((shape, i) => {
+        const stopIndex =
+          n === 1 ? 0 : Math.round((i * (k - 1)) / (n - 1));
+        const color = stops[Math.min(k - 1, Math.max(0, stopIndex))] ?? stops[0];
         return applyFillToShape(shape, color);
       });
       return { shapes: coloredShapes, viewBox: parsed.viewBox };
@@ -910,6 +921,10 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (!hasInteractedRef.current) {
+      hasInteractedRef.current = true;
+      onFirstInteraction?.();
+    }
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const clientX = e.clientX;
@@ -1095,9 +1110,11 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       if (prev.isReturning && prev.returnMode === 'grid') {
       }
       if (prev.shardFragments.length === 0) {
+        resetInFlightRef.current = true;
         return createInitialState();
       }
 
+      resetInFlightRef.current = true;
       return {
         ...prev,
         isReturning: true,
@@ -1132,6 +1149,18 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [handleReset]);
+
+  useEffect(() => {
+    const resetComplete =
+      presetState.returnMode === 'grid' &&
+      presetState.isReturning === false &&
+      presetState.shardFragments.length === 0;
+    if (resetInFlightRef.current && resetComplete) {
+      resetInFlightRef.current = false;
+      hasInteractedRef.current = false;
+      onResetComplete?.();
+    }
+  }, [presetState.returnMode, presetState.isReturning, presetState.shardFragments.length, onResetComplete]);
 
   // Animation loop
   useEffect(() => {
