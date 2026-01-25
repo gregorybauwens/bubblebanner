@@ -805,6 +805,8 @@ interface InteractiveHeroBannerProps {
   colorStops?: string[];
   onFirstInteraction?: () => void;
   onResetComplete?: () => void;
+  initialControls?: Controls;
+  persistControls?: boolean;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
@@ -814,6 +816,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   colorStops,
   onFirstInteraction,
   onResetComplete,
+  initialControls,
+  persistControls = true,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -855,14 +859,16 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 
   // Controls state
   const [controls, setControls] = useState<Controls>(() => {
-    if (typeof window === 'undefined') return DEFAULT_CONTROLS;
+    const baseControls = { ...DEFAULT_CONTROLS, ...(initialControls ?? {}) };
+    if (!persistControls) return baseControls;
+    if (typeof window === 'undefined') return baseControls;
     try {
       const saved = window.localStorage.getItem(CONTROLS_STORAGE_KEY);
-      if (!saved) return DEFAULT_CONTROLS;
+      if (!saved) return baseControls;
       const parsed = JSON.parse(saved) as Partial<Controls>;
-      return { ...DEFAULT_CONTROLS, ...parsed };
+      return { ...baseControls, ...parsed };
     } catch {
-      return DEFAULT_CONTROLS;
+      return baseControls;
     }
   });
 
@@ -1213,12 +1219,13 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   };
 
   useEffect(() => {
+    if (!persistControls) return;
     try {
       window.localStorage.setItem(CONTROLS_STORAGE_KEY, JSON.stringify(controls));
     } catch {
       // Ignore storage failures
     }
-  }, [controls]);
+  }, [controls, persistControls]);
 
   const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
   const cursorSize = Math.round(50 * cursorScale);
