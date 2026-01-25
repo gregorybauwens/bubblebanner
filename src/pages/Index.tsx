@@ -214,48 +214,9 @@ const ControlPanel = ({
       boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
     }}
   >
-    <div className="mb-2 text-[10px] uppercase tracking-wider text-neutral-500">Motion</div>
-    <div className="flex flex-wrap gap-4 items-start">
-      {/* Hover Controls */}
-      <div className="min-w-[180px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
-        <div className="space-y-1">
-          <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControlAndClearSaved("hoverStrength", v)} min={0} max={3} />
-          <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControlAndClearSaved("hoverRadius", v)} min={0.1} max={1} />
-        </div>
-      </div>
-
-      {/* Physics Controls */}
-      <div className="min-w-[180px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Physics</label>
-        <div className="space-y-1">
-          <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControlAndClearSaved("spring", v)} min={0.1} max={2} />
-          <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControlAndClearSaved("damping", v)} min={0.1} max={2} />
-        </div>
-      </div>
-
-      {/* Shatter controls */}
-      <div className="min-w-[180px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
-        <div className="space-y-1">
-          <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
-          <ControlSlider label="Force" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
-          <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControlAndClearSaved("explosionSpin", v)} min={0} max={3} />
-        </div>
-      </div>
-
-      {/* Settle controls */}
-      <div className="min-w-[180px] flex-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Settle</label>
-        <div className="space-y-1">
-          <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
-          <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControlAndClearSaved("returnSpring", v)} min={0.5} max={5} />
-          <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControlAndClearSaved("settleDamping", v)} min={0} max={2} />
-        </div>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex flex-col gap-1.5 min-w-[90px]">
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Motion</div>
+      <div className="flex items-center gap-2">
         <button
           onClick={() => {
             clearActiveSavedPreset();
@@ -265,9 +226,45 @@ const ControlPanel = ({
         >
           Reset
         </button>
-        <button onClick={() => setIsPaused(!isPaused)} className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors">
-          {isPaused ? "Play" : "Pause"}
-        </button>
+      </div>
+    </div>
+    <div className="flex flex-wrap gap-4 items-start">
+      {/* Hover Controls */}
+      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
+        <div className="flex flex-col gap-1 items-start justify-start h-fit">
+          <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControlAndClearSaved("hoverStrength", v)} min={0} max={3} />
+          <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControlAndClearSaved("hoverRadius", v)} min={0.1} max={1} />
+        </div>
+      </div>
+
+      {/* Physics Controls */}
+      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Physics</label>
+        <div className="flex flex-col gap-1 items-start justify-start h-fit">
+          <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControlAndClearSaved("spring", v)} min={0.1} max={2} />
+          <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControlAndClearSaved("damping", v)} min={0.1} max={2} />
+        </div>
+      </div>
+
+      {/* Shatter controls */}
+      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
+        <div className="flex flex-col gap-1 items-start justify-start h-fit">
+          <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
+          <ControlSlider label="Force" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
+          <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControlAndClearSaved("explosionSpin", v)} min={0} max={3} />
+        </div>
+      </div>
+
+      {/* Settle controls */}
+      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Settle</label>
+        <div className="flex flex-col gap-1 items-start justify-start h-fit">
+          <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
+          <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControlAndClearSaved("returnSpring", v)} min={0.5} max={5} />
+          <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControlAndClearSaved("settleDamping", v)} min={0} max={2} />
+        </div>
       </div>
     </div>
   </div>
@@ -605,20 +602,17 @@ const Index = () => {
             boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
           }}
         >
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wider text-neutral-500">Colors</span>
-              {hasInteracted && (
-                <span className="text-[10px] uppercase tracking-wider text-neutral-600">
-                  Locked after interaction
-                </span>
-              )}
-            </div>
-            <div
-              className={`${hasInteracted ? "opacity-50 pointer-events-none" : ""}`}
-              aria-disabled={hasInteracted}
-            >
-              <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-3 py-2">
+            <div className="flex items-center justify-between gap-10 py-1">
+              <div className="flex items-center gap-3">
+                <span className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Colors</span>
+                {hasInteracted && (
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-600">
+                    Locked after interaction
+                  </span>
+                )}
+              </div>
+              <div className={`${hasInteracted ? "opacity-50 pointer-events-none" : ""} flex items-center gap-2`}>
                 <button
                   onClick={() => {
                     setActiveSavedPresetId(null);
@@ -636,46 +630,103 @@ const Index = () => {
                 >
                   ↔
                 </button>
-                <span className="text-[10px] uppercase tracking-wider text-neutral-500">Presets</span>
-                <div className="ml-auto flex items-center gap-2">
-                  <button
-                    onClick={handleSavePreset}
-                    disabled={hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls}
-                    className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${
-                      hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls
-                        ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-                        : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                    }`}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={handleDeleteSelectedPreset}
-                    disabled={
-                      hasInteracted ||
-                      (activeSavedPresetId === null &&
-                        (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
-                      (activeSavedPresetId !== null && savedPresets.length === 0)
-                    }
-                    className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
-                      hasInteracted ||
-                      (activeSavedPresetId === null &&
-                        (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
-                      (activeSavedPresetId !== null && savedPresets.length === 0)
-                        ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-                        : "bg-neutral-800 hover:bg-neutral-700 text-white"
-                    }`}
-                    title="Delete selected preset"
-                    aria-label="Delete selected preset"
-                  >
-                    <Trash size={14} aria-hidden="true" />
-                  </button>
-                </div>
+                <button
+                  onClick={handleSavePreset}
+                  disabled={hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls}
+                  className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${
+                    hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls
+                      ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
+                      : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+                  }`}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={handleDeleteSelectedPreset}
+                  disabled={
+                    hasInteracted ||
+                    (activeSavedPresetId === null &&
+                      (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
+                    (activeSavedPresetId !== null && savedPresets.length === 0)
+                  }
+                  className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
+                    hasInteracted ||
+                    (activeSavedPresetId === null &&
+                      (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
+                    (activeSavedPresetId !== null && savedPresets.length === 0)
+                      ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
+                      : "bg-neutral-800 hover:bg-neutral-700 text-white"
+                  }`}
+                  title="Delete selected preset"
+                  aria-label="Delete selected preset"
+                >
+                  <Trash size={14} aria-hidden="true" />
+                </button>
               </div>
+            </div>
+            <div
+              className={`${hasInteracted ? "opacity-50 pointer-events-none" : ""}`}
+              aria-disabled={hasInteracted}
+            >
               <div className="flex flex-col gap-3">
+              <div className="flex flex-nowrap items-center gap-3 pt-1 pb-3">
+              {normalizedStops.map((stop, index) => (
+                <Popover
+                  key={`color-stop-${index}`}
+                  open={openPickerIndex === index}
+                  onOpenChange={(open) => setOpenPickerIndex(open ? index : null)}
+                >
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 rounded-md border border-white/10 bg-transparent px-2 py-1 hover:border-white/30"
+                    >
+                      <span
+                        className="h-6 w-6 rounded border border-white/10"
+                        style={{ backgroundColor: stop }}
+                      />
+                      <span className="text-[10px] text-neutral-400">{stop}</span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    className="w-72 p-3"
+                  >
+                    <div
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onPointerMove={(event) => event.stopPropagation()}
+                      onPointerUp={(event) => event.stopPropagation()}
+                    >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-[10px] uppercase tracking-wider text-neutral-500">Picker</span>
+                      <button
+                        type="button"
+                        onClick={() => setOpenPickerIndex(null)}
+                        className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+                      >
+                        Done
+                      </button>
+                    </div>
+                    <ColorPickerGradient
+                      value={stop}
+                      idSuffix={`color-${index}`}
+                      onChange={(nextColor) => {
+                        setActiveSavedPresetId(null);
+                        const next = [...normalizedStops];
+                        next[index] = nextColor;
+                        setColorStops(next);
+                        setSelectedPreset("Custom");
+                      }}
+                    />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              ))}
+              </div>
               {savedPresets.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-500">Saved</span>
+                  <span className="inline-block w-20 text-[10px] uppercase tracking-wider text-neutral-500">Saved</span>
                   {savedPresets.map((preset) => {
                     const isSelected = activeSavedPresetId === preset.id;
                     return (
@@ -710,7 +761,7 @@ const Index = () => {
               )}
               {colorPresetGroups.map((group) => (
                 <div key={group.name} className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-500">{group.name}</span>
+                  <span className="inline-block w-20 text-[10px] uppercase tracking-wider text-neutral-500">{group.name}</span>
                   {group.presets.map((preset) => {
                     const isSelected = selectedPreset === preset.name;
                     return (
@@ -733,62 +784,6 @@ const Index = () => {
                   })}
                 </div>
               ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-[10px] uppercase tracking-wider text-neutral-500">Colors</span>
-            {normalizedStops.map((stop, index) => (
-              <Popover
-                key={`color-stop-${index}`}
-                open={openPickerIndex === index}
-                onOpenChange={(open) => setOpenPickerIndex(open ? index : null)}
-              >
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-md border border-white/10 bg-transparent px-2 py-1 hover:border-white/30"
-                  >
-                    <span
-                      className="h-6 w-6 rounded border border-white/10"
-                      style={{ backgroundColor: stop }}
-                    />
-                    <span className="text-[10px] text-neutral-400">{stop}</span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  sideOffset={8}
-                  className="w-72 p-3"
-                >
-                  <div
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onPointerMove={(event) => event.stopPropagation()}
-                    onPointerUp={(event) => event.stopPropagation()}
-                  >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-wider text-neutral-500">Picker</span>
-                    <button
-                      type="button"
-                      onClick={() => setOpenPickerIndex(null)}
-                      className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
-                    >
-                      Done
-                    </button>
-                  </div>
-                  <ColorPickerGradient
-                    value={stop}
-                    idSuffix={`color-${index}`}
-                    onChange={(nextColor) => {
-                      setActiveSavedPresetId(null);
-                      const next = [...normalizedStops];
-                      next[index] = nextColor;
-                      setColorStops(next);
-                      setSelectedPreset("Custom");
-                    }}
-                  />
-                  </div>
-                </PopoverContent>
-              </Popover>
-            ))}
             </div>
           </div>
         </div>
