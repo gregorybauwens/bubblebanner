@@ -228,40 +228,63 @@ const ControlPanel = ({
         </button>
       </div>
     </div>
-    <div className="flex flex-wrap gap-4 items-start">
+    <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {/* Hover Controls */}
-      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
+      <div className="w-full min-w-0 flex flex-col gap-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
         <div className="flex flex-col gap-1 items-start justify-start h-fit">
           <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControlAndClearSaved("hoverStrength", v)} min={0} max={3} />
           <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControlAndClearSaved("hoverRadius", v)} min={0.1} max={1} />
-        </div>
-      </div>
-
-      {/* Physics Controls */}
-      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Physics</label>
-        <div className="flex flex-col gap-1 items-start justify-start h-fit">
           <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControlAndClearSaved("spring", v)} min={0.1} max={2} />
           <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControlAndClearSaved("damping", v)} min={0.1} max={2} />
         </div>
       </div>
 
       {/* Shatter controls */}
-      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
+      <div className="w-full min-w-0 flex flex-col gap-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
         <div className="flex flex-col gap-1 items-start justify-start h-fit">
           <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
-          <ControlSlider label="Force" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
+          <ControlSlider label="Travel" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
           <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControlAndClearSaved("explosionSpin", v)} min={0} max={3} />
+          <ControlSlider
+            label="Duration"
+            value={controls.explosionDurationMs}
+            onChange={(v) => updateControlAndClearSaved("explosionDurationMs", v)}
+            min={150}
+            max={2000}
+            step={50}
+            formatValue={(v) => `${Math.round(v)}ms`}
+          />
         </div>
       </div>
 
-      {/* Settle controls */}
-      <div className="min-w-[180px] flex-1 flex flex-col gap-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Settle</label>
+      {/* Wall bounce controls */}
+      <div className="w-full min-w-0 flex flex-col gap-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Wall Bounce</label>
+        <div className="flex flex-col gap-1 items-start justify-start h-fit">
+          <ControlSlider label="Bounce" value={controls.wallRestitution} onChange={(v) => updateControlAndClearSaved("wallRestitution", v)} min={0} max={1} step={0.05} />
+          <ControlSlider label="Friction" value={controls.wallFriction} onChange={(v) => updateControlAndClearSaved("wallFriction", v)} min={0} max={0.6} step={0.02} />
+          <ControlSlider label="Spin" value={controls.wallSpinDamping} onChange={(v) => updateControlAndClearSaved("wallSpinDamping", v)} min={0} max={0.6} step={0.02} />
+        </div>
+      </div>
+
+      {/* Reorg controls */}
+      <div className="w-full min-w-0 flex flex-col gap-1">
+        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Reorg</label>
         <div className="flex flex-col gap-1 items-start justify-start h-fit">
           <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
+          <ControlSlider label="Float" value={controls.floatStrength} onChange={(v) => updateControlAndClearSaved("floatStrength", v)} min={0.2} max={4} />
+          <ControlSlider label="Drag" value={controls.floatDrag} onChange={(v) => updateControlAndClearSaved("floatDrag", v)} min={0} max={6} />
+          <ControlSlider
+            label="Float ms"
+            value={controls.floatDurationMs}
+            onChange={(v) => updateControlAndClearSaved("floatDurationMs", v)}
+            min={200}
+            max={2000}
+            step={50}
+            formatValue={(v) => `${Math.round(v)}ms`}
+          />
           <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControlAndClearSaved("returnSpring", v)} min={0.5} max={5} />
           <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControlAndClearSaved("settleDamping", v)} min={0} max={2} />
         </div>

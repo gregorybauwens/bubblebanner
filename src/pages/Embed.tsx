@@ -18,10 +18,17 @@ const SUNSET_TIDE_CONTROLS = {
   timeScale: 1,
   shardSpread: 1.1,
   settleTime: 0.3,
+  floatStrength: 1.2,
+  floatDrag: 2.5,
+  floatDurationMs: 700,
   returnSpring: 2.8,
   settleDamping: 2.0,
   explosionForce: 0.9,
   explosionSpin: 1.2,
+  explosionDurationMs: 600,
+  wallRestitution: 0.78,
+  wallFriction: 0.18,
+  wallSpinDamping: 0.12,
 };
 
 const Embed = () => {

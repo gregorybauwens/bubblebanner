@@ -93,6 +93,7 @@ interface PresetState {
   isReturning: boolean;
   returnStartTime: number;
   returnMode: 'grid' | 'original';
+  reorgPhase: 'none' | 'float' | 'settle' | 'reset';
   lastClickTime: number;
   lastExplosionTime: number;
 }
@@ -117,11 +118,19 @@ interface Controls {
   // Voronoi specific
   shardSpread: number;
   settleTime: number; // Delay after last shatter before returning
+  floatStrength: number; // Gentle pull toward grid targets
+  floatDrag: number; // Drag during float phase
+  floatDurationMs: number; // Duration of float phase before settle
   returnSpring: number;
   settleDamping: number; // Higher = less bouncy, quicker settle
   // Explosion controls
   explosionForce: number; // How hard fragments explode outward
   explosionSpin: number; // How much fragments rotate on explosion
+  explosionDurationMs: number; // Time in explosion phase after spawn
+  // Wall interaction controls
+  wallRestitution: number; // Energy retained on bounce
+  wallFriction: number; // Tangential damping on collision
+  wallSpinDamping: number; // Spin damping on impact
 }
 
 // ============================================================================
@@ -182,10 +191,17 @@ const DEFAULT_CONTROLS: Controls = {
   timeScale: 1,
   shardSpread: 1.0,
   settleTime: 0.3,
+  floatStrength: 1.2,
+  floatDrag: 2.5,
+  floatDurationMs: 700,
   returnSpring: 3.4,
   settleDamping: 2.0,
   explosionForce: 0.7,
   explosionSpin: 1.4,
+  explosionDurationMs: 600,
+  wallRestitution: 0.78,
+  wallFriction: 0.18,
+  wallSpinDamping: 0.12,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -259,10 +275,13 @@ const bounceWithinBounds = (
   offsetY: number,
   vx: number,
   vy: number,
+  vr: number,
   viewBox: { x: number; y: number; width: number; height: number },
   padding: number = 0,
-  restitution: number = 0.9
-): { x: number; y: number; vx: number; vy: number } => {
+  restitution: number = 0.9,
+  friction: number = 0.1,
+  spinDamping: number = 0.1
+): { x: number; y: number; vx: number; vy: number; vr: number } => {
   const bounds = shape.bounds;
   const scaledWidth = bounds.width;
   const scaledHeight = bounds.height;
@@ -271,6 +290,7 @@ const bounceWithinBounds = (
   let y = offsetY;
   let nextVx = vx;
   let nextVy = vy;
+  let nextVr = vr;
 
   const newLeft = bounds.x + x;
   const newRight = newLeft + scaledWidth;
@@ -285,20 +305,28 @@ const bounceWithinBounds = (
   if (newLeft < containerLeft) {
     x += containerLeft - newLeft;
     nextVx = Math.abs(nextVx) * restitution;
+    nextVy *= Math.max(0, 1 - friction);
+    nextVr *= Math.max(0, 1 - spinDamping);
   } else if (newRight > containerRight) {
     x -= newRight - containerRight;
     nextVx = -Math.abs(nextVx) * restitution;
+    nextVy *= Math.max(0, 1 - friction);
+    nextVr *= Math.max(0, 1 - spinDamping);
   }
 
   if (newTop < containerTop) {
     y += containerTop - newTop;
     nextVy = Math.abs(nextVy) * restitution;
+    nextVx *= Math.max(0, 1 - friction);
+    nextVr *= Math.max(0, 1 - spinDamping);
   } else if (newBottom > containerBottom) {
     y -= newBottom - containerBottom;
     nextVy = -Math.abs(nextVy) * restitution;
+    nextVx *= Math.max(0, 1 - friction);
+    nextVr *= Math.max(0, 1 - spinDamping);
   }
 
-  return { x, y, vx: nextVx, vy: nextVy };
+  return { x, y, vx: nextVx, vy: nextVy, vr: nextVr };
 };
 
 // ============================================================================
@@ -535,6 +563,7 @@ const createInitialState = (): PresetState => ({
   isReturning: false,
   returnStartTime: 0,
   returnMode: 'grid',
+  reorgPhase: 'none',
   lastClickTime: 0,
   lastExplosionTime: 0,
 });
@@ -569,18 +598,32 @@ const PRESETS: Record<PresetKey, {
       
       // Check if we should start settling (no clicks for a while)
       const timeSinceLastClick = newClickTime - state.lastClickTime;
-      const timeSinceLastExplosion = newClickTime - state.lastExplosionTime;
-      const shouldStartSettling = timeSinceLastClick > settleDelay && 
-                                  timeSinceLastExplosion > 0.65 &&
-                                  state.shardFragments.length > 0 && 
+      const shouldStartSettling = timeSinceLastClick > settleDelay &&
+                                  state.shardFragments.length > 0 &&
                                   !state.isReturning;
+
+      let nextReorgPhase = state.reorgPhase;
+      let nextReturnStartTime = state.returnStartTime;
+      if (shouldStartSettling) {
+        nextReorgPhase = 'float';
+        nextReturnStartTime = newClickTime;
+      } else if (!state.isReturning) {
+        nextReorgPhase = 'none';
+      } else if (state.returnMode === 'grid' && state.reorgPhase === 'float') {
+        const floatElapsed = newClickTime - state.returnStartTime;
+        if (floatElapsed * 1000 >= controls.floatDurationMs) {
+          nextReorgPhase = 'settle';
+          nextReturnStartTime = newClickTime;
+        }
+      }
       
       let newState = { 
         ...state, 
         clickTime: newClickTime,
         isReturning: state.isReturning || shouldStartSettling,
-        returnStartTime: shouldStartSettling ? newClickTime : state.returnStartTime,
+        returnStartTime: nextReturnStartTime,
         returnMode: shouldStartSettling ? 'grid' : state.returnMode,
+        reorgPhase: nextReorgPhase,
       };
       
       // Calculate grid with 16px gutters for settling
@@ -652,31 +695,43 @@ const PRESETS: Record<PresetKey, {
       
       // Update fragment physics
       const updatedFragments = state.shardFragments.map((frag, index) => {
-        if (state.isReturning) {
-          const targetX = state.returnMode === 'original' ? 0 : (() => {
+        const explosionElapsed = newClickTime - frag.spawnTime;
+        const isExplodingNow = explosionElapsed * 1000 < controls.explosionDurationMs;
+        if (newState.isReturning) {
+          const targetX = newState.returnMode === 'original' ? 0 : (() => {
           const { col, row } = finalTargets[index] || { col: 0, row: 0 };
           const targetCenterX = gutter + col * (cellWidth + gutter) + cellWidth / 2;
             return targetCenterX - frag.shape.centroid.x;
           })();
-          const targetY = state.returnMode === 'original' ? 0 : (() => {
+          const targetY = newState.returnMode === 'original' ? 0 : (() => {
             const { col, row } = finalTargets[index] || { col: 0, row: 0 };
           const targetCenterY = gutter + row * (cellHeight + gutter) + cellHeight / 2;
             return targetCenterY - frag.shape.centroid.y;
           })();
           
-          // Spring towards grid position (not original position)
-          const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
-          const returnEase = smoothstep(clamp(returnElapsed / 0.6, 0, 1));
-          const springForce = controls.returnSpring * 6 * returnEase;
-          // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
-          const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
-          
           const diffX = targetX - frag.offsetX;
           const diffY = targetY - frag.offsetY;
-          
-          const newVx = frag.vx * damping + diffX * springForce * dt * 60;
-          const newVy = frag.vy * damping + diffY * springForce * dt * 60;
-          const newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
+
+          let newVx = frag.vx;
+          let newVy = frag.vy;
+          let newVr = frag.vr;
+
+          if (newState.returnMode === 'grid' && newState.reorgPhase === 'float') {
+            const floatDrag = Math.max(0, 1 - controls.floatDrag * dt);
+            newVx = frag.vx * floatDrag + diffX * controls.floatStrength * dt * 60;
+            newVy = frag.vy * floatDrag + diffY * controls.floatStrength * dt * 60;
+            newVr = frag.vr * floatDrag;
+          } else {
+            // Spring towards target (grid or original position)
+            const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
+            const returnEase = smoothstep(clamp(returnElapsed / 0.6, 0, 1));
+            const springForce = controls.returnSpring * 6 * returnEase;
+            // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
+            const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
+            newVx = frag.vx * damping + diffX * springForce * dt * 60;
+            newVy = frag.vy * damping + diffY * springForce * dt * 60;
+            newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
+          }
           
           const nextOffsetX = frag.offsetX + newVx * dt;
           const nextOffsetY = frag.offsetY + newVy * dt;
@@ -686,19 +741,24 @@ const PRESETS: Record<PresetKey, {
             nextOffsetY,
             newVx,
             newVy,
-            viewBox
+            newVr,
+            viewBox,
+            0,
+            controls.wallRestitution,
+            controls.wallFriction,
+            controls.wallSpinDamping
           );
           return {
             ...frag,
             vx: bounced.vx,
             vy: bounced.vy,
-            vr: newVr,
+            vr: bounced.vr,
             offsetX: bounced.x,
             offsetY: bounced.y,
             rotation: frag.rotation + newVr * dt,
-            isExploding: false,
+            isExploding: isExplodingNow,
           };
-        } else if (frag.isExploding) {
+        } else if (isExplodingNow) {
           // Explosion phase with damping
           const damping = 0.97;
           const nextOffsetX = frag.offsetX + frag.vx * dt;
@@ -712,22 +772,28 @@ const PRESETS: Record<PresetKey, {
             nextOffsetY,
             nextVx,
             nextVy,
-            viewBox
+            nextVr,
+            viewBox,
+            0,
+            controls.wallRestitution,
+            controls.wallFriction,
+            controls.wallSpinDamping
           );
-          const speed = Math.hypot(nextVx, nextVy) + Math.abs(nextVr) * 0.1;
-          const isExploding = speed > 5;
           return {
             ...frag,
             vx: bounced.vx,
             vy: bounced.vy,
-            vr: nextVr,
+            vr: bounced.vr,
             offsetX: bounced.x,
             offsetY: bounced.y,
             rotation: frag.rotation + frag.vr * dt,
-            isExploding,
+            isExploding: isExplodingNow,
           };
         }
-        return frag;
+        return {
+          ...frag,
+          isExploding: isExplodingNow,
+        };
       });
       
       // No automatic reset - fragments stay on grid until reset button is pressed
@@ -754,6 +820,7 @@ const PRESETS: Record<PresetKey, {
           isReturning: false,
           returnStartTime: 0,
           returnMode: 'grid',
+          reorgPhase: 'none',
         };
       }
       return newState;
@@ -805,7 +872,7 @@ interface InteractiveHeroBannerProps {
   colorStops?: string[];
   onFirstInteraction?: () => void;
   onResetComplete?: () => void;
-  initialControls?: Controls;
+  initialControls?: Partial<Controls>;
   persistControls?: boolean;
 }
 
@@ -1097,6 +1164,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             lastClickTime: prev.clickTime,
             lastExplosionTime: prev.clickTime,
             isReturning: false,
+            reorgPhase: 'none',
           };
         });
         return;
@@ -1129,6 +1197,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         lastExplosionTime: prev.clickTime,
         lastClickTime: prev.clickTime,
         shatteredShapeIds: new Set(),
+        reorgPhase: 'reset',
       };
     });
   }, []);
@@ -1398,11 +1467,20 @@ interface ControlSliderProps {
   min: number;
   max: number;
   step?: number;
+  formatValue?: (value: number) => string;
 }
 
-export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onChange, min, max, step = 0.1 }) => (
-  <div className="flex items-center gap-2">
-    <span className="w-16 text-neutral-400 text-[10px]">{label}</span>
+export const ControlSlider: React.FC<ControlSliderProps> = ({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 0.1,
+  formatValue = (v) => v.toFixed(1),
+}) => (
+  <div className="grid w-full min-w-0 grid-cols-[auto,1fr,auto] items-center gap-2">
+    <span className="text-neutral-400 text-[10px] whitespace-nowrap">{label}</span>
     <input
       type="range"
       min={min}
@@ -1410,10 +1488,10 @@ export const ControlSlider: React.FC<ControlSliderProps> = ({ label, value, onCh
       step={step}
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="flex-1 h-1 bg-neutral-700 rounded-full appearance-none cursor-pointer"
+      className="w-full min-w-0 h-1 bg-neutral-700 rounded-full appearance-none cursor-pointer"
       style={{ accentColor: '#A3A3A3' }}
     />
-    <span className="w-8 text-right text-neutral-500 text-[10px] tabular-nums">{value.toFixed(1)}</span>
+    <span className="text-right text-neutral-500 text-[10px] tabular-nums whitespace-nowrap">{formatValue(value)}</span>
   </div>
 );
 
