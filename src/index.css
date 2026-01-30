@@ -97,3 +97,70 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Cross-browser range input slider styling */
+@layer components {
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+  }
+
+  /* Track - Chrome/Safari/Edge */
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: #404040;
+    border-radius: 9999px;
+  }
+
+  /* Track - Firefox */
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: #404040;
+    border-radius: 9999px;
+  }
+
+  /* Thumb - Chrome/Safari/Edge */
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #a3a3a3;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    margin-top: -4px; /* Center thumb on track */
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    background: #d4d4d4;
+  }
+
+  /* Thumb - Firefox */
+  input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #a3a3a3;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb:hover {
+    background: #d4d4d4;
+  }
+
+  /* Focus styles */
+  input[type="range"]:focus {
+    outline: none;
+  }
+
+  input[type="range"]:focus::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px rgba(163, 163, 163, 0.3);
+  }
+
+  input[type="range"]:focus::-moz-range-thumb {
+    box-shadow: 0 0 0 2px rgba(163, 163, 163, 0.3);
+  }
+}

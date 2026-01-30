@@ -93,6 +93,7 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
       style={{
         background: "rgba(15, 15, 15, 0.9)",
         backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         border: "1px solid rgba(255, 255, 255, 0.08)",
         boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
       }}
