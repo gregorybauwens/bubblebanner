@@ -10,8 +10,8 @@ import {
   type BannerPreset,
 } from "@/presets/presets";
 
-const DEFAULT_COLOR_PRESET_NAME = "Nebula";
-const DEFAULT_COLOR_PRESET_STOPS = ["#1B1B3A", "#4A4E69", "#9A8C98", "#C9ADA7", "#F2E9E4", "#F72585"];
+const DEFAULT_COLOR_PRESET_NAME = "Copper";
+const DEFAULT_COLOR_PRESET_STOPS = ["#FFF1E6", "#FFD7BA", "#FFB48F", "#F28F3B", "#C8553D", "#6F1D1B"];
 const MAX_SAVED_PRESETS = 25;
 const DELETED_COLOR_PRESETS_STORAGE_KEY = "bubblebanner.deleted_color_presets.v1";
 
@@ -256,6 +256,15 @@ const ControlPanel = ({
             step={50}
             formatValue={(v) => `${Math.round(v)}ms`}
           />
+          <ControlSlider
+            label="Stagger"
+            value={controls.fractureStaggerMsMax}
+            onChange={(v) => updateControlAndClearSaved("fractureStaggerMsMax", v)}
+            min={0}
+            max={150}
+            step={10}
+            formatValue={(v) => `${Math.round(v)}ms`}
+          />
         </div>
       </div>
 
@@ -274,8 +283,6 @@ const ControlPanel = ({
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Reorg</label>
         <div className="flex flex-col gap-1 items-start justify-start h-fit">
           <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
-          <ControlSlider label="Float" value={controls.floatStrength} onChange={(v) => updateControlAndClearSaved("floatStrength", v)} min={0.2} max={4} />
-          <ControlSlider label="Drag" value={controls.floatDrag} onChange={(v) => updateControlAndClearSaved("floatDrag", v)} min={0} max={6} />
           <ControlSlider
             label="Float ms"
             value={controls.floatDurationMs}

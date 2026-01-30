@@ -80,6 +80,7 @@ interface ShardFragment {
   vr: number;
   generation: number;
   spawnTime: number;
+  spawnDelayMs: number;
   isExploding: boolean;
 }
 
@@ -127,6 +128,7 @@ interface Controls {
   explosionForce: number; // How hard fragments explode outward
   explosionSpin: number; // How much fragments rotate on explosion
   explosionDurationMs: number; // Time in explosion phase after spawn
+  fractureStaggerMsMax: number; // Max micro-stagger delay for fracture
   // Wall interaction controls
   wallRestitution: number; // Energy retained on bounce
   wallFriction: number; // Tangential damping on collision
@@ -182,6 +184,11 @@ const LOAD_DT_THRESHOLD = 0.02;
 const LOAD_RECOVERY_THRESHOLD = 0.018;
 const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
+
+// Locked controls (Reorg)
+const LOCKED_REORG_FLOAT_STRENGTH = 0.9;
+const LOCKED_REORG_FLOAT_DRAG = 0.6;
+
 const DEFAULT_CONTROLS: Controls = {
   hoverStrength: 1.2,
   hoverRadius: 0.3,
@@ -191,14 +198,15 @@ const DEFAULT_CONTROLS: Controls = {
   timeScale: 1,
   shardSpread: 1.0,
   settleTime: 0.3,
-  floatStrength: 1.2,
-  floatDrag: 2.5,
+  floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
+  floatDrag: LOCKED_REORG_FLOAT_DRAG,
   floatDurationMs: 700,
   returnSpring: 3.4,
   settleDamping: 2.0,
   explosionForce: 0.7,
   explosionSpin: 1.4,
   explosionDurationMs: 600,
+  fractureStaggerMsMax: 90,
   wallRestitution: 0.78,
   wallFriction: 0.18,
   wallSpinDamping: 0.12,
@@ -439,6 +447,46 @@ const createFragmentsFromShape = (
   
   const bounds = shape.bounds;
   const isHorizontalShape = bounds.width > bounds.height;
+
+  const createSegmentSizes = (total: number, count: number, seed: number) => {
+    const weights = Array.from({ length: count }, (_, idx) => {
+      const r = seededRandom(seed * 11 + idx * 17);
+      return 0.25 + r ** 1.8;
+    });
+    const bigIndex = Math.floor(seededRandom(seed * 13) * count);
+    weights[bigIndex] += 1.2;
+    const sum = weights.reduce((acc, v) => acc + v, 0);
+    const sizes = weights.map((w) => (w / sum) * total);
+    const minSize = total * 0.08;
+    let totalShort = 0;
+    sizes.forEach((size, idx) => {
+      if (size < minSize) {
+        totalShort += minSize - size;
+        sizes[idx] = minSize;
+      }
+    });
+    if (totalShort > 0) {
+      let remaining = totalShort;
+      const order = sizes
+        .map((size, idx) => ({ size, idx }))
+        .sort((a, b) => b.size - a.size);
+      order.forEach(({ idx }) => {
+        if (remaining <= 0) return;
+        const reducible = Math.max(0, sizes[idx] - minSize);
+        const take = Math.min(reducible, remaining);
+        sizes[idx] -= take;
+        remaining -= take;
+      });
+    }
+    const scale = total / sizes.reduce((acc, v) => acc + v, 0);
+    return sizes.map((size) => size * scale);
+  };
+  const sliceSizes = createSegmentSizes(
+    isHorizontalShape ? bounds.width : bounds.height,
+    fragmentCount,
+    Date.now() * 0.001 + fragmentCount
+  );
+  let cursor = isHorizontalShape ? bounds.x : bounds.y;
   
   for (let i = 0; i < fragmentCount; i++) {
     const seed = Date.now() + i * 1000 + Math.random() * 1000;
@@ -447,23 +495,25 @@ const createFragmentsFromShape = (
     let fragBounds: { x: number; y: number; width: number; height: number };
     
     if (isHorizontalShape) {
-      // Split horizontally
-      const sliceWidth = bounds.width / fragmentCount;
+      // Split horizontally (non-uniform)
+      const sliceWidth = sliceSizes[i] ?? bounds.width / fragmentCount;
       fragBounds = {
-        x: bounds.x + sliceWidth * i,
+        x: cursor,
         y: bounds.y,
         width: sliceWidth,
         height: bounds.height,
       };
+      cursor += sliceWidth;
     } else {
-      // Split vertically
-      const sliceHeight = bounds.height / fragmentCount;
+      // Split vertically (non-uniform)
+      const sliceHeight = sliceSizes[i] ?? bounds.height / fragmentCount;
       fragBounds = {
         x: bounds.x,
-        y: bounds.y + sliceHeight * i,
+        y: cursor,
         width: bounds.width,
         height: sliceHeight,
       };
+      cursor += sliceHeight;
     }
     
     // Add some randomness to the slice
@@ -495,6 +545,10 @@ const createFragmentsFromShape = (
     // Distance-based impulse - closer = stronger explosion
     const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
     const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5) * (0.75 + shatterScale * 0.25); // Higher base impulse
+
+    const fragArea = Math.max(1, fragBounds.width * fragBounds.height);
+    const refArea = Math.max(1, bounds.width * bounds.height / fragmentCount);
+    const massFactor = clamp(Math.sqrt(refArea / fragArea), 0.6, 1.5);
     
     // Create SVG element for the fragment (clipped rect)
     const rx = parseFloat(shape.attrs.rx || '0');
@@ -525,13 +579,19 @@ const createFragmentsFromShape = (
     };
     
     // Calculate powerful initial velocity - dramatic burst effect
-    const explosionVx = Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.5;
-    const explosionVy = Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.8;
+    const explosionVx = Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.5 * massFactor;
+    const explosionVy = Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.8 * massFactor;
     
     // Spin based on explosion direction and control setting
     const spinDirection = seededRandom(seed * 5) > 0.5 ? 1 : -1;
     const spinMagnitude = controls.explosionSpin * 150 * (0.5 + seededRandom(seed * 6) * 0.5);
-    const explosionVr = spinDirection * spinMagnitude * impulse;
+    const explosionVr = spinDirection * spinMagnitude * impulse * clamp(1 / massFactor, 0.7, 1.4);
+
+    const staggerBase = Math.max(0, controls.fractureStaggerMsMax);
+    const staggerNoise = seededRandom(seed * 9) * 0.35;
+    const staggerMs = staggerBase > 0
+      ? staggerBase * (0.25 + 0.75 * distFromClick) * (0.9 + staggerNoise)
+      : 0;
     
     fragments.push({
       id: fragShape.id,
@@ -545,6 +605,7 @@ const createFragmentsFromShape = (
       vr: explosionVr,
       generation,
       spawnTime: currentTime,
+      spawnDelayMs: staggerMs,
       isExploding: true,
     });
   }
@@ -660,7 +721,7 @@ const PRESETS: Record<PresetKey, {
       const finalTargets: { col: number; row: number }[] = [];
       
       fragmentGridTargets.forEach((target, index) => {
-        let { col, row } = target;
+        const { col, row } = target;
         const key = `${col},${row}`;
         
         if (!occupiedCells.has(key)) {
@@ -695,7 +756,12 @@ const PRESETS: Record<PresetKey, {
       
       // Update fragment physics
       const updatedFragments = state.shardFragments.map((frag, index) => {
-        const explosionElapsed = newClickTime - frag.spawnTime;
+        const rawElapsed = newClickTime - frag.spawnTime;
+        const delaySec = (frag.spawnDelayMs ?? 0) / 1000;
+        if (rawElapsed < delaySec) {
+          return { ...frag, isExploding: false };
+        }
+        const explosionElapsed = rawElapsed - delaySec;
         const isExplodingNow = explosionElapsed * 1000 < controls.explosionDurationMs;
         if (newState.isReturning) {
           const targetX = newState.returnMode === 'original' ? 0 : (() => {
@@ -826,7 +892,11 @@ const PRESETS: Record<PresetKey, {
       return newState;
     },
     shapeTransform: (shape, state, pointer, controls, viewBox) => {
-      let x = 0, y = 0, scale = 1, rotate = 0, opacity = 1;
+      let x = 0;
+      let y = 0;
+      const scale = 1;
+      const rotate = 0;
+      const opacity = 1;
 
       // Hover parallax - only when pointer is present
       if (pointer) {
@@ -916,24 +986,28 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     }
     return parsed;
   }, [svgMarkup, colorStops]);
-  const firstFourShapeIds = useMemo(() => {
-    return shapes
-      .slice()
-      .sort((a, b) => a.centroid.x - b.centroid.x)
-      .slice(0, 4)
-      .map(shape => shape.id);
-  }, [shapes]);
-
   // Controls state
   const [controls, setControls] = useState<Controls>(() => {
-    const baseControls = { ...DEFAULT_CONTROLS, ...(initialControls ?? {}) };
+    const baseControls: Controls = {
+      ...DEFAULT_CONTROLS,
+      ...(initialControls ?? {}),
+      // Locked controls (cannot be overridden by props / presets)
+      floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
+      floatDrag: LOCKED_REORG_FLOAT_DRAG,
+    };
     if (!persistControls) return baseControls;
     if (typeof window === 'undefined') return baseControls;
     try {
       const saved = window.localStorage.getItem(CONTROLS_STORAGE_KEY);
       if (!saved) return baseControls;
       const parsed = JSON.parse(saved) as Partial<Controls>;
-      return { ...baseControls, ...parsed };
+      return {
+        ...baseControls,
+        ...parsed,
+        // Locked controls (cannot be overridden by localStorage)
+        floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
+        floatDrag: LOCKED_REORG_FLOAT_DRAG,
+      };
     } catch {
       return baseControls;
     }
@@ -1098,9 +1172,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           hitShapes.push(shape);
         }
       }
-
-      if (hitShapes.length === 0) {
-      }
       
       if (hitShapes.length > 0) {
         const maxHitShapes = isUnderLoad ? 2 : 4;
@@ -1123,18 +1194,14 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         }
         
         const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
-          const shouldForceSixPieces = !isFragment &&
-            !presetState.shatteredShapeIds.has(hitShape.id) &&
-            firstFourShapeIds.includes(hitShape.id);
         const newFragments = createFragmentsFromShape(
-            hitShape,
+          hitShape,
           point,
           viewBox,
           controls,
           generation,
           presetState.clickTime,
-            effectiveShatterScale,
-            shouldForceSixPieces ? 6 : undefined
+          effectiveShatterScale
         );
         
           if (fragmentToRemove) {
@@ -1180,8 +1247,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setPresetState(prev => {
       if (prev.returnMode === 'original' && prev.isReturning) {
         return prev;
-      }
-      if (prev.isReturning && prev.returnMode === 'grid') {
       }
       if (prev.shardFragments.length === 0) {
         resetInFlightRef.current = true;
@@ -1284,6 +1349,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
 
   // Control updater
   const updateControl = (key: keyof Controls, value: number) => {
+    if (key === 'floatStrength' || key === 'floatDrag') return;
     setControls(prev => ({ ...prev, [key]: value }));
   };
 
