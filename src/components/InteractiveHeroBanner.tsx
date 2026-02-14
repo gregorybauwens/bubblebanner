@@ -1068,6 +1068,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const avgDtRef = useRef<number>(0.016);
   const presetStateRef = useRef<PresetState>(presetState);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const smoothPointerRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     presetStateRef.current = presetState;
@@ -1178,16 +1179,17 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       });
 
       // Add fragments (rendered last, so on top)
+      const hitSmoothedPtr = smoothPointerRef.current;
       presetState.shardFragments.forEach(frag => {
         let hoverX = 0;
         let hoverY = 0;
-        if (pointer && !isUnderLoad) {
+        if (hitSmoothedPtr && !isUnderLoad) {
           const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
           const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
-          const hoverDist = distance(fragNormX, fragNormY, pointer.x, pointer.y);
+          const hoverDist = distance(fragNormX, fragNormY, hitSmoothedPtr.x, hitSmoothedPtr.y);
           const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
-          hoverX = (pointer.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
-          hoverY = (pointer.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
+          hoverX = (hitSmoothedPtr.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
+          hoverY = (hitSmoothedPtr.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
         }
 
         const adjustedBounds = {
@@ -1366,6 +1368,22 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       // Update preset state - use pointerRef to avoid stale closure
       setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointerRef.current, effectiveControls, shapes, viewBox));
 
+      // Smooth the pointer for fragment hover (spring-like feel)
+      const currentPointer = pointerRef.current;
+      if (currentPointer) {
+        if (smoothPointerRef.current) {
+          const lerpFactor = 1 - Math.pow(0.001, dt); // ~0.12 at 60fps
+          smoothPointerRef.current = {
+            x: smoothPointerRef.current.x + (currentPointer.x - smoothPointerRef.current.x) * lerpFactor,
+            y: smoothPointerRef.current.y + (currentPointer.y - smoothPointerRef.current.y) * lerpFactor,
+          };
+        } else {
+          smoothPointerRef.current = { ...currentPointer };
+        }
+      } else {
+        smoothPointerRef.current = null;
+      }
+
       const fragmentCount = presetStateRef.current.shardFragments.length;
       avgDtRef.current = avgDtRef.current * 0.9 + dt * 0.1;
       const overload = fragmentCount > LOAD_FRAGMENT_THRESHOLD || avgDtRef.current > LOAD_DT_THRESHOLD;
@@ -1503,15 +1521,16 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             const centerX = frag.shape.centroid.x;
             const centerY = frag.shape.centroid.y;
             
-            // Calculate hover offset for this fragment
+            // Calculate hover offset for this fragment (uses smoothed pointer for spring-like feel)
             let hoverX = 0, hoverY = 0;
-            if (pointer && !isUnderLoad) {
+            const smoothPtr = smoothPointerRef.current;
+            if (smoothPtr && !isUnderLoad) {
               const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
               const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
-              const hoverDist = distance(fragNormX, fragNormY, pointer.x, pointer.y);
+              const hoverDist = distance(fragNormX, fragNormY, smoothPtr.x, smoothPtr.y);
               const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
-              hoverX = (pointer.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
-              hoverY = (pointer.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
+              hoverX = (smoothPtr.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
+              hoverY = (smoothPtr.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
             }
             
             const tx = frag.offsetX + hoverX;

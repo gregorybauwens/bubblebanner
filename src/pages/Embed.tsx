@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import InteractiveHeroBanner from "@/components/InteractiveHeroBanner";
 
 const RAINBOW_STOPS = [
@@ -16,14 +17,14 @@ const RAINBOW_CONTROLS = {
   spring: 1.2,
   damping: 1.5,
   timeScale: 1,
-  shardSpread: 1.7,
+  shardSpread: 0.6,
   settleTime: 1.9,
   floatStrength: 0.9,
   floatDrag: 0.6,
   floatDurationMs: 200,
   returnSpring: 1.1,
   settleDamping: 2.0,
-  explosionForce: 2.4,
+  explosionForce: 1.8,
   explosionSpin: 2.2,
   explosionDurationMs: 1300,
   fractureStaggerMsMax: 20,
@@ -33,6 +34,14 @@ const RAINBOW_CONTROLS = {
 };
 
 const Embed = () => {
+  useEffect(() => {
+    const prev = document.body.style.background;
+    document.body.style.background = "transparent";
+    return () => {
+      document.body.style.background = prev;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
       <div className="w-full max-w-[1312px] mx-auto">
