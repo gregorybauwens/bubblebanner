@@ -1,15 +1,15 @@
 import InteractiveHeroBanner from "@/components/InteractiveHeroBanner";
 
-const COPPER_STOPS = [
-  "#FFF1E6",
-  "#FFD7BA",
-  "#FFB48F",
-  "#F28F3B",
-  "#C8553D",
-  "#6F1D1B",
+const RAINBOW_STOPS = [
+  "#FF5F6D",
+  "#FFC371",
+  "#FDEB71",
+  "#C0F2D8",
+  "#8EC5FC",
+  "#E0C3FC",
 ];
 
-const COPPER_CONTROLS = {
+const RAINBOW_CONTROLS = {
   hoverStrength: 1.2,
   hoverRadius: 0.2,
   clickStrength: 1,
@@ -23,11 +23,11 @@ const COPPER_CONTROLS = {
   floatDurationMs: 200,
   returnSpring: 1.1,
   settleDamping: 2.0,
-  explosionForce: 1.4,
-  explosionSpin: 1.2,
-  explosionDurationMs: 1450,
+  explosionForce: 2.4,
+  explosionSpin: 2.2,
+  explosionDurationMs: 1300,
   fractureStaggerMsMax: 20,
-  wallRestitution: 0.2,
+  wallRestitution: 0.7,
   wallFriction: 0.2,
   wallSpinDamping: 0.1,
 };
@@ -37,8 +37,8 @@ const Embed = () => {
     <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
       <div className="w-full max-w-[1312px] mx-auto">
         <InteractiveHeroBanner
-          colorStops={COPPER_STOPS}
-          initialControls={COPPER_CONTROLS}
+          colorStops={RAINBOW_STOPS}
+          initialControls={RAINBOW_CONTROLS}
           persistControls={false}
         />
       </div>

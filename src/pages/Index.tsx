@@ -10,8 +10,8 @@ import {
   type BannerPreset,
 } from "@/presets/presets";
 
-const DEFAULT_COLOR_PRESET_NAME = "Copper";
-const DEFAULT_COLOR_PRESET_STOPS = ["#FFF1E6", "#FFD7BA", "#FFB48F", "#F28F3B", "#C8553D", "#6F1D1B"];
+const DEFAULT_COLOR_PRESET_NAME = "Rainbow";
+const DEFAULT_COLOR_PRESET_STOPS = ["#FF5F6D", "#FFC371", "#FDEB71", "#C0F2D8", "#8EC5FC", "#E0C3FC"];
 const MAX_SAVED_PRESETS = 25;
 const DELETED_COLOR_PRESETS_STORAGE_KEY = "bubblebanner.deleted_color_presets.v1";
 
