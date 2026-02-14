@@ -102,6 +102,7 @@ interface PresetState {
   reorgPhase: 'none' | 'float' | 'settle' | 'reset';
   lastClickTime: number;
   lastExplosionTime: number;
+  cachedGridTargets: { col: number; row: number }[] | null;
 }
 
 interface ShapeTransform {
@@ -457,8 +458,6 @@ const createFragmentsFromShape = (
   const firstClickBonus = generation === 1 && areaRatio > 0.1 ? 2 : 0;
   const fragmentCount = overrideFragmentCount ?? Math.max(2, Math.min(scaledCount + firstClickBonus, 10));
 
-  const isHorizontalShape = bounds.width > bounds.height;
-
   const createSegmentSizes = (total: number, count: number, seed: number) => {
     const weights = Array.from({ length: count }, (_, idx) => {
       const r = seededRandom(seed * 11 + idx * 17);
@@ -492,133 +491,142 @@ const createFragmentsFromShape = (
     const scale = total / sizes.reduce((acc, v) => acc + v, 0);
     return sizes.map((size) => size * scale);
   };
-  const sliceSizes = createSegmentSizes(
-    isHorizontalShape ? bounds.width : bounds.height,
-    fragmentCount,
-    Date.now() * 0.001 + fragmentCount
-  );
-  let cursor = isHorizontalShape ? bounds.x : bounds.y;
-  
-  for (let i = 0; i < fragmentCount; i++) {
-    const seed = Date.now() + i * 1000 + Math.random() * 1000;
-    
-    // Calculate fragment bounds - divide the parent shape
-    let fragBounds: { x: number; y: number; width: number; height: number };
-    
-    if (isHorizontalShape) {
-      // Split horizontally (non-uniform)
-      const sliceWidth = sliceSizes[i] ?? bounds.width / fragmentCount;
-      fragBounds = {
-        x: cursor,
-        y: bounds.y,
-        width: sliceWidth,
-        height: bounds.height,
+
+  // Determine if 2D grid splitting is needed (shape too large relative to viewBox)
+  const needsGridSplit = (bounds.width / viewBox.width > 0.6) ||
+                         (bounds.height / viewBox.height > 0.6);
+
+  let cols: number, rows: number;
+  if (needsGridSplit) {
+    // Distribute fragment count into a grid proportional to shape aspect ratio
+    const aspect = bounds.width / bounds.height;
+    cols = Math.max(1, Math.round(Math.sqrt(fragmentCount * aspect)));
+    rows = Math.max(1, Math.ceil(fragmentCount / cols));
+    // Ensure we have enough cells
+    while (cols * rows < fragmentCount) cols++;
+  } else {
+    const isHorizontalShape = bounds.width > bounds.height;
+    cols = isHorizontalShape ? fragmentCount : 1;
+    rows = isHorizontalShape ? 1 : fragmentCount;
+  }
+
+  const seedBase = Date.now() * 0.001 + fragmentCount;
+  const colSizes = createSegmentSizes(bounds.width, cols, seedBase);
+  const rowSizes = createSegmentSizes(bounds.height, rows, seedBase + 99);
+
+  let fragIndex = 0;
+  let cursorY = bounds.y;
+  for (let r = 0; r < rows; r++) {
+    let cursorX = bounds.x;
+    for (let c = 0; c < cols; c++) {
+      if (fragIndex >= fragmentCount) break;
+
+      const fragBounds = {
+        x: cursorX,
+        y: cursorY,
+        width: colSizes[c],
+        height: rowSizes[r],
       };
-      cursor += sliceWidth;
-    } else {
-      // Split vertically (non-uniform)
-      const sliceHeight = sliceSizes[i] ?? bounds.height / fragmentCount;
-      fragBounds = {
-        x: bounds.x,
-        y: cursor,
-        width: bounds.width,
-        height: sliceHeight,
+      cursorX += colSizes[c];
+
+      const seed = Date.now() + fragIndex * 1000 + Math.random() * 1000;
+
+      // Add some randomness to the slice
+      const jitterX = (seededRandom(seed) - 0.5) * fragBounds.width * 0.1;
+      const jitterY = (seededRandom(seed * 2) - 0.5) * fragBounds.height * 0.1;
+
+      const fragCentroid = {
+        x: fragBounds.x + fragBounds.width / 2 + jitterX,
+        y: fragBounds.y + fragBounds.height / 2 + jitterY,
       };
-      cursor += sliceHeight;
+
+      // Calculate explosion direction from click point
+      const clickX = clickPoint.x * viewBox.width;
+      const clickY = clickPoint.y * viewBox.height;
+      const angleFromClick = Math.atan2(
+        fragCentroid.y - clickY,
+        fragCentroid.x - clickX
+      );
+
+      // Add some spread - wider angle variation for more chaotic explosion
+      const angleVariation = (seededRandom(seed * 3) - 0.5) * 1.2;
+      const finalAngle = angleFromClick + angleVariation;
+
+      // Explosion force calculation - much more intense burst
+      const baseSpeed = controls.explosionForce * 0.75;
+      const speedVariation = 0.7 + seededRandom(seed * 4) * 1.0; // More variation
+      const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
+
+      // Distance-based impulse - closer = stronger explosion
+      const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
+      const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5) * (0.75 + shatterScale * 0.25); // Higher base impulse
+
+      const fragArea = Math.max(1, fragBounds.width * fragBounds.height);
+      const refArea = Math.max(1, bounds.width * bounds.height / fragmentCount);
+      const massFactor = clamp(Math.sqrt(refArea / fragArea), 0.6, 1.5);
+
+      // Create SVG element for the fragment (clipped rect)
+      const rx = parseFloat(shape.attrs.rx || '0');
+      const ry = parseFloat(shape.attrs.ry || rx.toString());
+      const scaledRx = Math.min(rx, fragBounds.width / 2, fragBounds.height / 2);
+      const scaledRy = Math.min(ry, fragBounds.width / 2, fragBounds.height / 2);
+
+      const fragElement = `<rect x="${fragBounds.x}" y="${fragBounds.y}" width="${fragBounds.width}" height="${fragBounds.height}" rx="${scaledRx}" ry="${scaledRy}" fill="${shape.fill || '#ECB300'}"/>`;
+
+      const fragShape: Shape = {
+        id: `frag-${shape.id}-${generation}-${fragIndex}-${Date.now()}`,
+        type: 'rect',
+        element: fragElement,
+        attrs: {
+          x: fragBounds.x.toString(),
+          y: fragBounds.y.toString(),
+          width: fragBounds.width.toString(),
+          height: fragBounds.height.toString(),
+          rx: scaledRx.toString(),
+          ry: scaledRy.toString(),
+          fill: shape.fill || '#ECB300',
+        },
+        centroid: fragCentroid,
+        bounds: fragBounds,
+        fill: shape.fill,
+        parentId: shape.id,
+        generation,
+      };
+
+      // Calculate powerful initial velocity - dramatic burst effect
+      const explosionVx = Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.5 * massFactor;
+      const explosionVy = Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.8 * massFactor;
+
+      // Spin based on explosion direction and control setting
+      const spinDirection = seededRandom(seed * 5) > 0.5 ? 1 : -1;
+      const spinMagnitude = controls.explosionSpin * 150 * (0.5 + seededRandom(seed * 6) * 0.5);
+      const explosionVr = spinDirection * spinMagnitude * impulse * clamp(1 / massFactor, 0.7, 1.4);
+
+      const staggerBase = Math.max(0, controls.fractureStaggerMsMax);
+      const staggerNoise = seededRandom(seed * 9) * 0.35;
+      const staggerMs = staggerBase > 0
+        ? staggerBase * (0.25 + 0.75 * distFromClick) * (0.9 + staggerNoise)
+        : 0;
+
+      fragments.push({
+        id: fragShape.id,
+        shape: fragShape,
+        originalShape: shape.parentId ? shape : shape, // Keep reference to root shape
+        offsetX: 0,
+        offsetY: 0,
+        rotation: 0,
+        vx: explosionVx,
+        vy: explosionVy,
+        vr: explosionVr,
+        generation,
+        spawnTime: currentTime,
+        spawnDelayMs: staggerMs,
+        isExploding: true,
+      });
+
+      fragIndex++;
     }
-    
-    // Add some randomness to the slice
-    const jitterX = (seededRandom(seed) - 0.5) * fragBounds.width * 0.1;
-    const jitterY = (seededRandom(seed * 2) - 0.5) * fragBounds.height * 0.1;
-    
-    const fragCentroid = {
-      x: fragBounds.x + fragBounds.width / 2 + jitterX,
-      y: fragBounds.y + fragBounds.height / 2 + jitterY,
-    };
-    
-    // Calculate explosion direction from click point
-    const clickX = clickPoint.x * viewBox.width;
-    const clickY = clickPoint.y * viewBox.height;
-    const angleFromClick = Math.atan2(
-      fragCentroid.y - clickY,
-      fragCentroid.x - clickX
-    );
-    
-    // Add some spread - wider angle variation for more chaotic explosion
-    const angleVariation = (seededRandom(seed * 3) - 0.5) * 1.2;
-    const finalAngle = angleFromClick + angleVariation;
-    
-    // Explosion force calculation - much more intense burst
-    const baseSpeed = controls.explosionForce * 0.75;
-    const speedVariation = 0.7 + seededRandom(seed * 4) * 1.0; // More variation
-    const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
-    
-    // Distance-based impulse - closer = stronger explosion
-    const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
-    const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5) * (0.75 + shatterScale * 0.25); // Higher base impulse
-
-    const fragArea = Math.max(1, fragBounds.width * fragBounds.height);
-    const refArea = Math.max(1, bounds.width * bounds.height / fragmentCount);
-    const massFactor = clamp(Math.sqrt(refArea / fragArea), 0.6, 1.5);
-    
-    // Create SVG element for the fragment (clipped rect)
-    const rx = parseFloat(shape.attrs.rx || '0');
-    const ry = parseFloat(shape.attrs.ry || rx.toString());
-    const scaledRx = Math.min(rx, fragBounds.width / 2, fragBounds.height / 2);
-    const scaledRy = Math.min(ry, fragBounds.width / 2, fragBounds.height / 2);
-    
-    const fragElement = `<rect x="${fragBounds.x}" y="${fragBounds.y}" width="${fragBounds.width}" height="${fragBounds.height}" rx="${scaledRx}" ry="${scaledRy}" fill="${shape.fill || '#ECB300'}"/>`;
-    
-    const fragShape: Shape = {
-      id: `frag-${shape.id}-${generation}-${i}-${Date.now()}`,
-      type: 'rect',
-      element: fragElement,
-      attrs: {
-        x: fragBounds.x.toString(),
-        y: fragBounds.y.toString(),
-        width: fragBounds.width.toString(),
-        height: fragBounds.height.toString(),
-        rx: scaledRx.toString(),
-        ry: scaledRy.toString(),
-        fill: shape.fill || '#ECB300',
-      },
-      centroid: fragCentroid,
-      bounds: fragBounds,
-      fill: shape.fill,
-      parentId: shape.id,
-      generation,
-    };
-    
-    // Calculate powerful initial velocity - dramatic burst effect
-    const explosionVx = Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.5 * massFactor;
-    const explosionVy = Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.8 * massFactor;
-    
-    // Spin based on explosion direction and control setting
-    const spinDirection = seededRandom(seed * 5) > 0.5 ? 1 : -1;
-    const spinMagnitude = controls.explosionSpin * 150 * (0.5 + seededRandom(seed * 6) * 0.5);
-    const explosionVr = spinDirection * spinMagnitude * impulse * clamp(1 / massFactor, 0.7, 1.4);
-
-    const staggerBase = Math.max(0, controls.fractureStaggerMsMax);
-    const staggerNoise = seededRandom(seed * 9) * 0.35;
-    const staggerMs = staggerBase > 0
-      ? staggerBase * (0.25 + 0.75 * distFromClick) * (0.9 + staggerNoise)
-      : 0;
-    
-    fragments.push({
-      id: fragShape.id,
-      shape: fragShape,
-      originalShape: shape.parentId ? shape : shape, // Keep reference to root shape
-      offsetX: 0,
-      offsetY: 0,
-      rotation: 0,
-      vx: explosionVx,
-      vy: explosionVy,
-      vr: explosionVr,
-      generation,
-      spawnTime: currentTime,
-      spawnDelayMs: staggerMs,
-      isExploding: true,
-    });
+    cursorY += rowSizes[r];
   }
   
   return fragments;
@@ -638,6 +646,7 @@ const createInitialState = (): PresetState => ({
   reorgPhase: 'none',
   lastClickTime: 0,
   lastExplosionTime: 0,
+  cachedGridTargets: null,
 });
 
 const PRESETS: Record<PresetKey, {
@@ -698,7 +707,7 @@ const PRESETS: Record<PresetKey, {
         reorgPhase: nextReorgPhase,
       };
       
-      // Calculate grid with 16px gutters for settling
+      // Calculate grid dimensions (needed every frame for target-to-pixel conversion)
       const gutter = 16;
       const fragmentCount = state.shardFragments.length;
       const cols = Math.ceil(Math.sqrt(fragmentCount * (viewBox.width / viewBox.height)));
@@ -706,64 +715,65 @@ const PRESETS: Record<PresetKey, {
       const cellWidth = (viewBox.width - gutter * (cols + 1)) / cols;
       const cellHeight = (viewBox.height - gutter * (rows + 1)) / rows;
       
-      // Assign each fragment to nearest grid cell based on current position
-      // First pass: calculate current positions and find nearest grid cell
-      const gridAssignments = new Map<string, number>(); // "col,row" -> fragmentIndex
-      const fragmentGridTargets: { col: number; row: number }[] = [];
-      
-      // Calculate which grid cell each fragment is closest to
-      state.shardFragments.forEach((frag, index) => {
-        const currentX = frag.shape.centroid.x + frag.offsetX;
-        const currentY = frag.shape.centroid.y + frag.offsetY;
+      // Cache grid target assignments — compute once when entering return phase,
+      // then reuse on subsequent frames to prevent target flip-flopping / twitching
+      let finalTargets = newState.cachedGridTargets;
+      if (!finalTargets || shouldStartSettling) {
+        // Assign each fragment to nearest grid cell based on current position
+        const fragmentGridTargets: { col: number; row: number }[] = [];
         
-        // Find nearest grid cell
-        let bestCol = Math.round((currentX - gutter - cellWidth / 2) / (cellWidth + gutter));
-        let bestRow = Math.round((currentY - gutter - cellHeight / 2) / (cellHeight + gutter));
+        state.shardFragments.forEach((frag, index) => {
+          const currentX = frag.shape.centroid.x + frag.offsetX;
+          const currentY = frag.shape.centroid.y + frag.offsetY;
+          
+          let bestCol = Math.round((currentX - gutter - cellWidth / 2) / (cellWidth + gutter));
+          let bestRow = Math.round((currentY - gutter - cellHeight / 2) / (cellHeight + gutter));
+          
+          bestCol = Math.max(0, Math.min(cols - 1, bestCol));
+          bestRow = Math.max(0, Math.min(rows - 1, bestRow));
+          
+          fragmentGridTargets[index] = { col: bestCol, row: bestRow };
+        });
         
-        // Clamp to valid range
-        bestCol = Math.max(0, Math.min(cols - 1, bestCol));
-        bestRow = Math.max(0, Math.min(rows - 1, bestRow));
+        // Resolve conflicts - if multiple fragments want the same cell, use spiral search
+        const occupiedCells = new Set<string>();
+        const computedTargets: { col: number; row: number }[] = [];
         
-        fragmentGridTargets[index] = { col: bestCol, row: bestRow };
-      });
-      
-      // Resolve conflicts - if multiple fragments want the same cell, use spiral search
-      const occupiedCells = new Set<string>();
-      const finalTargets: { col: number; row: number }[] = [];
-      
-      fragmentGridTargets.forEach((target, index) => {
-        const { col, row } = target;
-        const key = `${col},${row}`;
-        
-        if (!occupiedCells.has(key)) {
-          occupiedCells.add(key);
-          finalTargets[index] = { col, row };
-        } else {
-          // Spiral search for nearest free cell
-          let found = false;
-          for (let radius = 1; radius < Math.max(cols, rows) && !found; radius++) {
-            for (let dc = -radius; dc <= radius && !found; dc++) {
-              for (let dr = -radius; dr <= radius && !found; dr++) {
-                if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue;
-                const newCol = col + dc;
-                const newRow = row + dr;
-                if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows) {
-                  const newKey = `${newCol},${newRow}`;
-                  if (!occupiedCells.has(newKey)) {
-                    occupiedCells.add(newKey);
-                    finalTargets[index] = { col: newCol, row: newRow };
-                    found = true;
+        fragmentGridTargets.forEach((target, index) => {
+          const { col, row } = target;
+          const key = `${col},${row}`;
+          
+          if (!occupiedCells.has(key)) {
+            occupiedCells.add(key);
+            computedTargets[index] = { col, row };
+          } else {
+            let found = false;
+            for (let radius = 1; radius < Math.max(cols, rows) && !found; radius++) {
+              for (let dc = -radius; dc <= radius && !found; dc++) {
+                for (let dr = -radius; dr <= radius && !found; dr++) {
+                  if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue;
+                  const newCol = col + dc;
+                  const newRow = row + dr;
+                  if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows) {
+                    const newKey = `${newCol},${newRow}`;
+                    if (!occupiedCells.has(newKey)) {
+                      occupiedCells.add(newKey);
+                      computedTargets[index] = { col: newCol, row: newRow };
+                      found = true;
+                    }
                   }
                 }
               }
             }
+            if (!found) {
+              computedTargets[index] = { col, row };
+            }
           }
-          // Fallback if no cell found
-          if (!found) {
-            finalTargets[index] = { col, row };
-          }
-        }
-      });
+        });
+        
+        finalTargets = computedTargets;
+        newState = { ...newState, cachedGridTargets: computedTargets };
+      }
       
       // Update fragment physics
       const updatedFragments = state.shardFragments.map((frag, index) => {
@@ -816,8 +826,8 @@ const PRESETS: Record<PresetKey, {
           const distToTarget = Math.hypot(diffX, diffY);
           const isSettled = newState.returnMode === 'grid' && 
                            newState.reorgPhase === 'settle' && 
-                           distToTarget < 20 && 
-                           speed < 100;
+                           distToTarget < 80 && 
+                           speed < 400;
           
           if (isSettled) {
             // Snap to target and zero velocities
@@ -921,6 +931,7 @@ const PRESETS: Record<PresetKey, {
           returnStartTime: 0,
           returnMode: 'grid',
           reorgPhase: 'none',
+          cachedGridTargets: null,
         };
       }
       return newState;
@@ -1270,6 +1281,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             lastExplosionTime: prev.clickTime,
             isReturning: false,
             reorgPhase: 'none',
+            cachedGridTargets: null,
           };
         });
         return;
@@ -1301,6 +1313,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         lastClickTime: prev.clickTime,
         shatteredShapeIds: new Set(),
         reorgPhase: 'reset',
+        cachedGridTargets: null,
       };
     });
   }, []);
