@@ -13,9 +13,14 @@
  * 3. Add preset-specific controls to the control panel
  */
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { converter, formatHex } from 'culori';
+
+// Memoized SVG inner element to avoid re-parsing dangerouslySetInnerHTML on every render
+const ShapeElement = memo(({ html }: { html: string }) => (
+  <g dangerouslySetInnerHTML={{ __html: html }} />
+));
 
 // ============================================================================
 // PASTE YOUR SVG MARKUP HERE (or pass via svgMarkup prop)
@@ -784,12 +789,6 @@ const PRESETS: Record<PresetKey, {
           const diffX = targetX - frag.offsetX;
           const diffY = targetY - frag.offsetY;
 
-          // #region agent log
-          if (index === 0 && newState.reorgPhase === 'settle') {
-            fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:physics',message:'Physics update during settle',data:{diffX,diffY,vx:frag.vx,vy:frag.vy,vr:frag.vr,reorgPhase:newState.reorgPhase,isReturning:newState.isReturning},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B-D'})}).catch(()=>{});
-          }
-          // #endregion
-
           let newVx = frag.vx;
           let newVy = frag.vy;
           let newVr = frag.vr;
@@ -811,12 +810,6 @@ const PRESETS: Record<PresetKey, {
             newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
           }
           
-          // #region agent log
-          if (index === 0 && newState.reorgPhase === 'settle' && (Math.abs(newVx) > 0.01 || Math.abs(newVy) > 0.01 || Math.abs(newVr) > 0.01)) {
-            fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:physics-result',message:'Non-zero velocity after settle physics',data:{newVx,newVy,newVr,rotation:frag.rotation},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B-E'})}).catch(()=>{});
-          }
-          // #endregion
-
           // Check if fragment has settled (close to target with low velocity)
           // Use generous thresholds because spring can oscillate significantly
           const speed = Math.hypot(newVx, newVy);
@@ -828,9 +821,6 @@ const PRESETS: Record<PresetKey, {
           
           if (isSettled) {
             // Snap to target and zero velocities
-            // #region agent log
-            fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:settled',message:'Fragment settled',data:{distToTarget,speed,targetX,targetY},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'FIX'})}).catch(()=>{});
-            // #endregion
             return {
               ...frag,
               vx: 0,
@@ -1112,9 +1102,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   }, []);
 
   const handlePointerLeave = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:handlePointerLeave',message:'Mouse left banner',data:{previousPointer:pointerRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     setPointer(null);
   }, []);
 
@@ -1371,14 +1358,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       const overload = fragmentCount > LOAD_FRAGMENT_THRESHOLD || avgDtRef.current > LOAD_DT_THRESHOLD;
       const recovered = fragmentCount < LOAD_FRAGMENT_THRESHOLD * 0.8 && avgDtRef.current < LOAD_RECOVERY_THRESHOLD;
       if (!isUnderLoad && overload) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:load',message:'Entering load shedding',data:{fragmentCount,avgDt:avgDtRef.current,threshold:LOAD_FRAGMENT_THRESHOLD},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'LOAD'})}).catch(()=>{});
-        // #endregion
         setIsUnderLoad(true);
       } else if (isUnderLoad && recovered) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:load',message:'Exiting load shedding',data:{fragmentCount,avgDt:avgDtRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'LOAD'})}).catch(()=>{});
-        // #endregion
         setIsUnderLoad(false);
       }
       
@@ -1448,7 +1429,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           height="100%"
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
           preserveAspectRatio="xMidYMid meet"
-          style={{ display: 'block' }}
+          style={{ display: 'block', willChange: 'transform' }}
         >
           {/* Filters for effects */}
           <defs>
@@ -1499,64 +1480,39 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                     : undefined,
                 }}
               >
-                <g dangerouslySetInnerHTML={{ __html: shape.element }} />
+                <ShapeElement html={shape.element} />
               </motion.g>
             );
           })}
           
-          {/* Render voronoi fragments with hover effect */}
-          {activePreset === 'voronoi' && presetState.shardFragments.map((frag, idx) => {
+          {/* Render voronoi fragments with direct SVG transforms (no framer-motion overhead) */}
+          {activePreset === 'voronoi' && presetState.shardFragments.map((frag) => {
             const centerX = frag.shape.centroid.x;
             const centerY = frag.shape.centroid.y;
             
             // Calculate hover offset for this fragment
             let hoverX = 0, hoverY = 0;
-            // #region agent log
-            if (idx === 0) {
-              fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:hover-check',message:'Hover state check',data:{hasPointer:!!pointer,pointerX:pointer?.x,pointerY:pointer?.y,isUnderLoad,reorgPhase:presetState.reorgPhase,isReturning:presetState.isReturning,fragCount:presetState.shardFragments.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'HOVER'})}).catch(()=>{});
-            }
-            // #endregion
             if (pointer && !isUnderLoad) {
-              // Fragment's current position in normalized coordinates
               const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
               const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
               const hoverDist = distance(fragNormX, fragNormY, pointer.x, pointer.y);
               const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
               hoverX = (pointer.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
               hoverY = (pointer.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
-              // #region agent log
-              if (idx === 0) {
-                fetch('http://127.0.0.1:7244/ingest/3cae535a-6db8-4094-b644-82290f42e25a',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InteractiveHeroBanner.tsx:hover-calc',message:'Hover calc details',data:{fragNormX,fragNormY,pointerX:pointer.x,pointerY:pointer.y,hoverDist,hoverRadius:effectiveControls.hoverRadius,hoverInfluence,hoverX,hoverY},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'HOVER-CALC'})}).catch(()=>{});
-              }
-              // #endregion
             }
             
+            const tx = frag.offsetX + hoverX;
+            const ty = frag.offsetY + hoverY;
+            const fragOpacity = presetState.returnMode === 'original' ? 1 - resetProgress : 1;
+            
             return (
-              <motion.g
+              <g
                 key={frag.id}
-                initial={{ 
-                  x: 0, 
-                  y: 0, 
-                  rotate: 0,
-                  opacity: 1,
-                }}
-                animate={{
-                  x: frag.offsetX + hoverX,
-                  y: frag.offsetY + hoverY,
-                  rotate: frag.rotation,
-                  opacity: presetState.returnMode === 'original' ? 1 - resetProgress : 1,
-                }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 20,
-                }}
-                style={{
-                  transformOrigin: `${centerX}px ${centerY}px`,
-                }}
+                transform={`translate(${tx}, ${ty}) rotate(${frag.rotation}, ${centerX}, ${centerY})`}
+                opacity={fragOpacity}
               >
-                <g dangerouslySetInnerHTML={{ __html: frag.shape.element }} />
-              </motion.g>
+                <ShapeElement html={frag.shape.element} />
+              </g>
             );
           })}
         </svg>
