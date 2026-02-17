@@ -213,7 +213,7 @@ const DEFAULT_CONTROLS: Controls = {
   explosionForce: 2.4,
   explosionSpin: 2.2,
   explosionDurationMs: 1300,
-  fractureStaggerMsMax: 20,
+  fractureStaggerMsMax: 80,
   wallRestitution: 0.7,
   wallFriction: 0.2,
   wallSpinDamping: 0.1,
@@ -1444,7 +1444,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       {/* Main Banner */}
       <div
         ref={containerRef}
-        className="relative w-full overflow-hidden rounded-2xl"
+        className="relative w-full overflow-visible rounded-2xl"
         style={{ 
           aspectRatio: `${viewBox.width} / ${viewBox.height}`,
           background: 'transparent',

@@ -27,7 +27,7 @@ const RAINBOW_CONTROLS = {
   explosionForce: 1.8,
   explosionSpin: 2.2,
   explosionDurationMs: 1300,
-  fractureStaggerMsMax: 20,
+  fractureStaggerMsMax: 80,
   wallRestitution: 0.7,
   wallFriction: 0.2,
   wallSpinDamping: 0.1,

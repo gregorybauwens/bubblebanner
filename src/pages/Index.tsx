@@ -229,7 +229,7 @@ const ControlPanel = ({
         </button>
       </div>
     </div>
-    <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {/* Hover Controls */}
       <div className="w-full min-w-0 flex flex-col gap-1">
         <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
@@ -257,25 +257,6 @@ const ControlPanel = ({
             step={50}
             formatValue={(v) => `${Math.round(v)}ms`}
           />
-          <ControlSlider
-            label="Stagger"
-            value={controls.fractureStaggerMsMax}
-            onChange={(v) => updateControlAndClearSaved("fractureStaggerMsMax", v)}
-            min={0}
-            max={150}
-            step={10}
-            formatValue={(v) => `${Math.round(v)}ms`}
-          />
-        </div>
-      </div>
-
-      {/* Wall bounce controls */}
-      <div className="w-full min-w-0 flex flex-col gap-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Wall Bounce</label>
-        <div className="flex flex-col gap-1 items-start justify-start h-fit">
-          <ControlSlider label="Bounce" value={controls.wallRestitution} onChange={(v) => updateControlAndClearSaved("wallRestitution", v)} min={0} max={1} step={0.05} />
-          <ControlSlider label="Friction" value={controls.wallFriction} onChange={(v) => updateControlAndClearSaved("wallFriction", v)} min={0} max={0.6} step={0.02} />
-          <ControlSlider label="Spin" value={controls.wallSpinDamping} onChange={(v) => updateControlAndClearSaved("wallSpinDamping", v)} min={0} max={0.6} step={0.02} />
         </div>
       </div>
 
