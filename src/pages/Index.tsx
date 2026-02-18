@@ -578,6 +578,7 @@ const Index = () => {
       <div className="w-full max-w-[1312px]">
         <InteractiveHeroBanner
           colorStops={normalizedStops}
+          persistControls={false}
           onFirstInteraction={() => {
             setHasInteracted(true);
           }}
