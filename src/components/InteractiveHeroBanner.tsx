@@ -25,13 +25,13 @@ const ShapeElement = memo(({ html }: { html: string }) => (
 // ============================================================================
 // PASTE YOUR SVG MARKUP HERE (or pass via svgMarkup prop)
 // ============================================================================
-const STARTER_SVG = `<svg width="1312" height="312" viewBox="0 0 1312 312" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="648" height="312" rx="140" fill="#ECB300"/>
-<rect x="664" width="315" height="312" rx="120" fill="#EB9F00"/>
-<rect x="995" width="149" height="312" rx="70" fill="#EF8A00"/>
-<rect x="1160" width="64" height="312" rx="32" fill="#EB7800"/>
-<rect x="1240" width="34" height="312" rx="17" fill="#E56100"/>
-<rect x="1290" width="22" height="312" rx="11" fill="#E74C00"/>
+const STARTER_SVG = `<svg width="1312" height="380" viewBox="0 0 1312 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="648" height="380" rx="171" fill="#ECB300"/>
+<rect x="664" width="315" height="380" rx="146" fill="#EB9F00"/>
+<rect x="995" width="149" height="380" rx="75" fill="#EF8A00"/>
+<rect x="1160" width="64" height="380" rx="32" fill="#EB7800"/>
+<rect x="1240" width="34" height="380" rx="17" fill="#E56100"/>
+<rect x="1290" width="22" height="380" rx="11" fill="#E74C00"/>
 </svg>`;
 
 export const DEFAULT_COLOR_STOPS = [
@@ -353,12 +353,12 @@ const parseSVG = (svgMarkup: string): { shapes: Shape[]; viewBox: ViewBox } => {
   const svg = doc.querySelector('svg');
   
   if (!svg) {
-    return { shapes: [], viewBox: { x: 0, y: 0, width: 1312, height: 312 } };
+    return { shapes: [], viewBox: { x: 0, y: 0, width: 1312, height: 380 } };
   }
 
   // Parse viewBox
   const viewBoxAttr = svg.getAttribute('viewBox');
-  let viewBox: ViewBox = { x: 0, y: 0, width: 1312, height: 312 };
+  let viewBox: ViewBox = { x: 0, y: 0, width: 1312, height: 380 };
   if (viewBoxAttr) {
     const parts = viewBoxAttr.split(/\s+/).map(Number);
     if (parts.length === 4) {
