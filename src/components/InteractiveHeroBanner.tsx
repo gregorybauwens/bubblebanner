@@ -198,7 +198,7 @@ const WALL_PADDING = 12;
 
 const DEFAULT_CONTROLS: Controls = {
   hoverStrength: 1.2,
-  hoverRadius: 0.2,
+  hoverRadius: 0.23,
   clickStrength: 1,
   spring: 1.2,
   damping: 1.5,
@@ -1430,9 +1430,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   }, [controls, persistControls]);
 
   const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
-  const cursorSize = Math.round(50 * cursorScale);
+  const cursorSize = Math.round(58 * cursorScale);
   const cursorHotspot = Math.round(cursorSize / 2);
-  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 50 50"><circle cx="25" cy="25" r="24" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
+  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 58 58"><circle cx="29" cy="29" r="28" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
   const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
 
   const resetProgress = presetState.returnMode === 'original'

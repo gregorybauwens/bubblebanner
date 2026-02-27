@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import InteractiveHeroBanner from "@/components/InteractiveHeroBanner";
 
-const RAINBOW_STOPS = [
-  "#FF5F6D",
-  "#FFC371",
-  "#FDEB71",
-  "#C0F2D8",
-  "#8EC5FC",
-  "#E0C3FC",
+const AQUA_MIST_STOPS = [
+  "#262248",
+  "#213569",
+  "#31778C",
+  "#5BC0BE",
+  "#9EE493",
+  "#F6F740",
 ];
 
 const RAINBOW_CONTROLS = {
@@ -46,7 +46,7 @@ const Embed = () => {
     <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
       <div className="w-full max-w-[1312px] mx-auto">
         <InteractiveHeroBanner
-          colorStops={RAINBOW_STOPS}
+          colorStops={AQUA_MIST_STOPS}
           initialControls={RAINBOW_CONTROLS}
           persistControls={false}
         />
