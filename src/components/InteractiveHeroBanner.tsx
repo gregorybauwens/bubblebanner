@@ -1460,7 +1460,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           height="100%"
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
           preserveAspectRatio="xMidYMid meet"
-          style={{ display: 'block', willChange: 'transform' }}
+          style={{ display: 'block', willChange: 'transform', overflow: 'visible' }}
         >
           {/* Filters for effects */}
           <defs>
