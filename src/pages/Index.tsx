@@ -205,8 +205,18 @@ const ControlPanel = ({
   ]);
 
   return (
+  <>
+    <button
+      onClick={() => {
+        clearActiveSavedPreset();
+        onReset();
+      }}
+      className="mt-6 ml-auto block px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+    >
+      Reset Banner
+    </button>
   <div
-    className="mt-6 p-4 rounded-xl text-xs"
+    className="mt-3 p-4 rounded-xl text-xs"
     style={{
       background: "rgba(15, 15, 15, 0.9)",
       backdropFilter: "blur(12px)",
@@ -215,19 +225,8 @@ const ControlPanel = ({
       boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
     }}
   >
-    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-2">
       <div className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Motion</div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => {
-            clearActiveSavedPreset();
-            onReset();
-          }}
-          className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
-        >
-          Reset
-        </button>
-      </div>
     </div>
     <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {/* Hover Controls */}
@@ -280,6 +279,7 @@ const ControlPanel = ({
       </div>
     </div>
   </div>
+  </>
 );
 };
 
@@ -642,7 +642,7 @@ const Index = () => {
               aria-disabled={hasInteracted}
             >
               <div className="flex flex-col gap-3">
-              <div className="flex flex-nowrap items-center gap-3 pt-1 pb-3">
+              <div className="flex flex-wrap items-center gap-3 pt-1 pb-3">
               {normalizedStops.map((stop, index) => (
                 <Popover
                   key={`color-stop-${index}`}
@@ -698,8 +698,9 @@ const Index = () => {
               ))}
               </div>
               {savedPresets.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-block w-20 text-[10px] uppercase tracking-wider text-neutral-500">Saved</span>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-500">Saved</span>
+                  <div className="flex flex-wrap gap-2">
                   {savedPresets.map((preset) => {
                     const isSelected = activeSavedPresetId === preset.id;
                     return (
@@ -730,11 +731,13 @@ const Index = () => {
                       </button>
                     );
                   })}
+                  </div>
                 </div>
               )}
               {colorPresetGroups.map((group) => (
-                <div key={group.name} className="flex flex-wrap items-center gap-2">
-                  <span className="inline-block w-20 text-[10px] uppercase tracking-wider text-neutral-500">{group.name}</span>
+                <div key={group.name} className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-500">{group.name}</span>
+                  <div className="flex flex-wrap gap-2">
                   {group.presets.map((preset) => {
                     const isSelected = selectedPreset === preset.name;
                     return (
@@ -755,6 +758,7 @@ const Index = () => {
                       </button>
                     );
                   })}
+                  </div>
                 </div>
               ))}
             </div>
