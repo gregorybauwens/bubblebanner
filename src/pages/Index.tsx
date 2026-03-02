@@ -2,7 +2,7 @@ import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, type Control
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ColorPickerGradient from "@/components/ColorPickerGradient";
-import { Trash } from "lucide-react";
+import { ChevronDown, Trash } from "lucide-react";
 import {
   decodePresetFromUrl,
   loadPresetsFromStorage,
@@ -10,8 +10,9 @@ import {
   type BannerPreset,
 } from "@/presets/presets";
 
-const DEFAULT_COLOR_PRESET_NAME = "Rainbow";
+const DEFAULT_COLOR_PRESET_NAME = "Haze";
 const DEFAULT_COLOR_PRESET_STOPS = ["#FF5F6D", "#FFC371", "#FDEB71", "#C0F2D8", "#8EC5FC", "#E0C3FC"];
+const DEFAULT_HAZE_STOPS = ["#FFD166", "#FF9E64", "#FF6E91", "#D490D4", "#8ABFFF", "#A5F3FC"];
 const MAX_SAVED_PRESETS = 25;
 const DELETED_COLOR_PRESETS_STORAGE_KEY = "bubblebanner.deleted_color_presets.v1";
 
@@ -157,6 +158,11 @@ type ControlPanelExtraProps = {
   pendingPreset: BannerPreset | null;
   clearPendingPreset: () => void;
   onSyncBannerState: (controls: Controls, updateControl: (key: keyof Controls, value: number) => void) => void;
+  onReverseColors: () => void;
+  onSavePreset: () => void;
+  onDeletePreset: () => void;
+  isSaveDisabled: boolean;
+  isDeleteDisabled: boolean;
 };
 
 const ControlPanel = ({
@@ -176,7 +182,14 @@ const ControlPanel = ({
   pendingPreset,
   clearPendingPreset,
   onSyncBannerState,
+  onReverseColors,
+  onSavePreset,
+  onDeletePreset,
+  isSaveDisabled,
+  isDeleteDisabled,
 }: ControlPanelProps & ControlPanelExtraProps) => {
+  const [isMotionOpen, setIsMotionOpen] = useState(false);
+
   useEffect(() => {
     onSyncBannerState(controls, updateControl);
   }, [controls, updateControl, onSyncBannerState]);
@@ -206,75 +219,136 @@ const ControlPanel = ({
 
   return (
   <>
-    <button
-      onClick={() => {
-        clearActiveSavedPreset();
-        onReset();
-      }}
-      className="mt-6 ml-auto block px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
-    >
-      Reset Banner
-    </button>
+    <div className="mt-8 mb-4 flex items-center justify-end gap-2">
+      <div className={`${isColorsLocked ? "opacity-50 pointer-events-none" : ""} flex items-center gap-2`}>
+        <button
+          onClick={onReverseColors}
+          disabled={isColorsLocked}
+          className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
+            isColorsLocked
+              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
+              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+          }`}
+          title="Reverse colors"
+          aria-label="Reverse colors"
+        >
+          ↔
+        </button>
+        <button
+          onClick={onSavePreset}
+          disabled={isSaveDisabled}
+          className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${
+            isSaveDisabled
+              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
+              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+          }`}
+        >
+          Save
+        </button>
+        <button
+          onClick={onDeletePreset}
+          disabled={isDeleteDisabled}
+          className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
+            isDeleteDisabled
+              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
+              : "bg-neutral-800 hover:bg-neutral-700 text-white"
+          }`}
+          title="Delete selected preset"
+          aria-label="Delete selected preset"
+        >
+          <Trash size={14} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="w-px h-4 bg-neutral-700" />
+      <button
+        onClick={() => {
+          clearActiveSavedPreset();
+          onReset();
+        }}
+        className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+      >
+        Reset Banner
+      </button>
+    </div>
   <div
-    className="mt-3 p-4 rounded-xl text-xs"
+    className="mt-0 p-4 rounded-xl text-xs"
     style={{
       background: "rgba(15, 15, 15, 0.9)",
       backdropFilter: "blur(12px)",
       WebkitBackdropFilter: "blur(12px)",
-      border: "1px solid rgba(255, 255, 255, 0.08)",
+      border: "1px solid #333333",
       boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
     }}
   >
-    <div className="mb-2">
+    <button
+      type="button"
+      onClick={() => setIsMotionOpen((o) => !o)}
+      className="w-full flex items-center justify-between mb-2 group"
+    >
       <div className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Motion</div>
-    </div>
-    <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {/* Hover Controls */}
-      <div className="w-full min-w-0 flex flex-col gap-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
-        <div className="flex flex-col gap-1 items-start justify-start h-fit">
-          <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControlAndClearSaved("hoverStrength", v)} min={0} max={3} />
-          <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControlAndClearSaved("hoverRadius", v)} min={0.1} max={1} />
-          <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControlAndClearSaved("spring", v)} min={0.1} max={2} />
-          <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControlAndClearSaved("damping", v)} min={0.1} max={2} />
-        </div>
-      </div>
+      <ChevronDown
+        size={16}
+        className="text-neutral-500 group-hover:text-neutral-300 transition-all duration-300"
+        style={{ transform: isMotionOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+      />
+    </button>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateRows: isMotionOpen ? "1fr" : "0fr",
+        transition: "grid-template-rows 350ms cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    >
+      <div style={{ overflow: "hidden" }}>
+        <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 pb-1">
+          {/* Hover Controls */}
+          <div className="w-full min-w-0 flex flex-col gap-1">
+            <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
+            <div className="flex flex-col gap-1 items-start justify-start h-fit">
+              <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControlAndClearSaved("hoverStrength", v)} min={0} max={3} />
+              <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControlAndClearSaved("hoverRadius", v)} min={0.1} max={1} />
+              <ControlSlider label="Spring" value={controls.spring} onChange={(v) => updateControlAndClearSaved("spring", v)} min={0.1} max={2} />
+              <ControlSlider label="Damping" value={controls.damping} onChange={(v) => updateControlAndClearSaved("damping", v)} min={0.1} max={2} />
+            </div>
+          </div>
 
-      {/* Shatter controls */}
-      <div className="w-full min-w-0 flex flex-col gap-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
-        <div className="flex flex-col gap-1 items-start justify-start h-fit">
-          <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
-          <ControlSlider label="Travel" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
-          <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControlAndClearSaved("explosionSpin", v)} min={0} max={3} />
-          <ControlSlider
-            label="Duration"
-            value={controls.explosionDurationMs}
-            onChange={(v) => updateControlAndClearSaved("explosionDurationMs", v)}
-            min={150}
-            max={2000}
-            step={50}
-            formatValue={(v) => `${Math.round(v)}ms`}
-          />
-        </div>
-      </div>
+          {/* Shatter controls */}
+          <div className="w-full min-w-0 flex flex-col gap-1">
+            <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
+            <div className="flex flex-col gap-1 items-start justify-start h-fit">
+              <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
+              <ControlSlider label="Travel" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
+              <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControlAndClearSaved("explosionSpin", v)} min={0} max={3} />
+              <ControlSlider
+                label="Duration"
+                value={controls.explosionDurationMs}
+                onChange={(v) => updateControlAndClearSaved("explosionDurationMs", v)}
+                min={150}
+                max={2000}
+                step={50}
+                formatValue={(v) => `${Math.round(v)}ms`}
+              />
+            </div>
+          </div>
 
-      {/* Reorg controls */}
-      <div className="w-full min-w-0 flex flex-col gap-1">
-        <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Reorg</label>
-        <div className="flex flex-col gap-1 items-start justify-start h-fit">
-          <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
-          <ControlSlider
-            label="Float ms"
-            value={controls.floatDurationMs}
-            onChange={(v) => updateControlAndClearSaved("floatDurationMs", v)}
-            min={200}
-            max={2000}
-            step={50}
-            formatValue={(v) => `${Math.round(v)}ms`}
-          />
-          <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControlAndClearSaved("returnSpring", v)} min={0.5} max={5} />
-          <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControlAndClearSaved("settleDamping", v)} min={0} max={2} />
+          {/* Reorg controls */}
+          <div className="w-full min-w-0 flex flex-col gap-1">
+            <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Reorg</label>
+            <div className="flex flex-col gap-1 items-start justify-start h-fit">
+              <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
+              <ControlSlider
+                label="Float ms"
+                value={controls.floatDurationMs}
+                onChange={(v) => updateControlAndClearSaved("floatDurationMs", v)}
+                min={200}
+                max={2000}
+                step={50}
+                formatValue={(v) => `${Math.round(v)}ms`}
+              />
+              <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControlAndClearSaved("returnSpring", v)} min={0.5} max={5} />
+              <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControlAndClearSaved("settleDamping", v)} min={0} max={2} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -284,8 +358,9 @@ const ControlPanel = ({
 };
 
 const Index = () => {
-  const [colorStops, setColorStops] = useState<string[]>(DEFAULT_COLOR_PRESET_STOPS);
+  const [colorStops, setColorStops] = useState<string[]>(DEFAULT_HAZE_STOPS);
   const [selectedPreset, setSelectedPreset] = useState<string>(DEFAULT_COLOR_PRESET_NAME);
+  const [isColorsOpen, setIsColorsOpen] = useState(true);
   const [savedPresets, setSavedPresets] = useState<BannerPreset[]>(() => loadPresetsFromStorage());
   const [pendingPreset, setPendingPreset] = useState<BannerPreset | null>(null);
   const [bannerControls, setBannerControls] = useState<Controls | null>(null);
@@ -562,6 +637,20 @@ const Index = () => {
                 setBannerControls(controls);
                 setBannerUpdateControl(() => updateControl);
               }}
+              onReverseColors={() => {
+                setActiveSavedPresetId(null);
+                setColorStops([...normalizedStops].reverse());
+                setSelectedPreset("Custom");
+              }}
+              onSavePreset={handleSavePreset}
+              onDeletePreset={handleDeleteSelectedPreset}
+              isSaveDisabled={hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls}
+              isDeleteDisabled={
+                hasInteracted ||
+                (activeSavedPresetId === null &&
+                  (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
+                (activeSavedPresetId !== null && savedPresets.length === 0)
+              }
             />
           )}
         />
@@ -571,72 +660,31 @@ const Index = () => {
             background: "rgba(15, 15, 15, 0.9)",
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid #333333",
             boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
           }}
         >
           <div className="flex flex-col gap-3 py-2">
-            <div className="flex items-center justify-between gap-10 py-1">
-              <div className="flex items-center gap-3">
-                <span className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Colors</span>
-                {hasInteracted && (
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-600">
-                    Locked after interaction
-                  </span>
-                )}
-              </div>
-              <div className={`${hasInteracted ? "opacity-50 pointer-events-none" : ""} flex items-center gap-2`}>
-                <button
-                  onClick={() => {
-                    setActiveSavedPresetId(null);
-                    setColorStops([...normalizedStops].reverse());
-                    setSelectedPreset("Custom");
-                  }}
-                  disabled={hasInteracted}
-                  className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
-                    hasInteracted
-                      ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-                      : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                  }`}
-                  title="Reverse colors"
-                  aria-label="Reverse colors"
-                >
-                  ↔
-                </button>
-                <button
-                  onClick={handleSavePreset}
-                  disabled={hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls}
-                  className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${
-                    hasInteracted || savedPresets.length >= MAX_SAVED_PRESETS || !bannerControls
-                      ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-                      : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                  }`}
-                >
-                  Save
-                </button>
-                <button
-                  onClick={handleDeleteSelectedPreset}
-                  disabled={
-                    hasInteracted ||
-                    (activeSavedPresetId === null &&
-                      (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
-                    (activeSavedPresetId !== null && savedPresets.length === 0)
-                  }
-                  className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
-                    hasInteracted ||
-                    (activeSavedPresetId === null &&
-                      (selectedPreset === "Custom" || !findBuiltInPreset(selectedPreset))) ||
-                    (activeSavedPresetId !== null && savedPresets.length === 0)
-                      ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-                      : "bg-neutral-800 hover:bg-neutral-700 text-white"
-                  }`}
-                  title="Delete selected preset"
-                  aria-label="Delete selected preset"
-                >
-                  <Trash size={14} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsColorsOpen((o) => !o)}
+              className="w-full flex items-center justify-between mb-2 group"
+            >
+              <div className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Colors</div>
+              <ChevronDown
+                size={16}
+                className="text-neutral-500 group-hover:text-neutral-300 transition-all duration-300"
+                style={{ transform: isColorsOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+              />
+            </button>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: isColorsOpen ? "1fr" : "0fr",
+                transition: "grid-template-rows 350ms cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+            >
+            <div style={{ overflow: "hidden" }}>
             <div
               className={`${hasInteracted ? "opacity-50 pointer-events-none" : ""}`}
               aria-disabled={hasInteracted}
@@ -763,6 +811,8 @@ const Index = () => {
               ))}
             </div>
           </div>
+            </div>
+            </div>
         </div>
       </div>
     </div>

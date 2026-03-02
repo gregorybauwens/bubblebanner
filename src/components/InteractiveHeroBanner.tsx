@@ -26,12 +26,12 @@ const ShapeElement = memo(({ html }: { html: string }) => (
 // PASTE YOUR SVG MARKUP HERE (or pass via svgMarkup prop)
 // ============================================================================
 const STARTER_SVG = `<svg width="1312" height="380" viewBox="0 0 1312 380" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="648" height="380" rx="171" fill="#ECB300"/>
-<rect x="664" width="315" height="380" rx="146" fill="#EB9F00"/>
-<rect x="995" width="149" height="380" rx="75" fill="#EF8A00"/>
-<rect x="1160" width="64" height="380" rx="32" fill="#EB7800"/>
-<rect x="1240" width="34" height="380" rx="17" fill="#E56100"/>
-<rect x="1290" width="22" height="380" rx="11" fill="#E74C00"/>
+<rect x="0"    y="0" width="608" height="380" rx="190" fill="#FFD166"/>
+<rect x="622"  y="0" width="290" height="380" rx="145" fill="#FF9E64"/>
+<rect x="926"  y="0" width="164" height="380" rx="82"  fill="#FF6E91"/>
+<rect x="1104" y="0" width="94"  height="380" rx="47"  fill="#D490D4"/>
+<rect x="1212" y="0" width="52"  height="380" rx="26"  fill="#8ABFFF"/>
+<rect x="1278" y="0" width="34"  height="380" rx="17"  fill="#A5F3FC"/>
 </svg>`;
 
 export const DEFAULT_COLOR_STOPS = [
