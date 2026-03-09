@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import InteractiveHeroBanner from "@/components/InteractiveHeroBanner";
+import type { Controls } from "@/components/InteractiveHeroBanner";
 
 const AQUA_MIST_STOPS = [
   "#262248",
@@ -10,61 +11,77 @@ const AQUA_MIST_STOPS = [
   "#F6F740",
 ];
 
-// settleTime is very high so pieces never reassemble during the animation
-const LOADER_CONTROLS = {
+// Start gentle — escalated via liveControls steps below
+const LOADER_CONTROLS: Partial<Controls> = {
   hoverStrength: 0,
   hoverRadius: 0,
   clickStrength: 1,
   spring: 1.2,
   damping: 1.5,
-  timeScale: 1,
-  shardSpread: 0.9,
+  timeScale: 0.5,
+  shardSpread: 1.0,
   settleTime: 999,
   floatStrength: 1.2,
   floatDrag: 0.4,
   floatDurationMs: 9999,
   returnSpring: 1.4,
   settleDamping: 1.8,
-  explosionForce: 2.4,
-  explosionSpin: 3.0,
-  explosionDurationMs: 1200,
-  fractureStaggerMsMax: 60,
-  wallRestitution: 0.65,
-  wallFriction: 0.18,
-  wallSpinDamping: 0.08,
+  explosionForce: 1.5,
+  explosionSpin: 2.0,
+  explosionDurationMs: 2000,
+  fractureStaggerMsMax: 40,
+  wallRestitution: 0.82,
+  wallFriction: 0.04,
+  wallSpinDamping: 0.02,
+  disableWalls: false,
 };
 
-type Phase = "enter" | "jitter" | "explode" | "fade" | "done";
+// Escalation timeline — each step sets liveControls then re-triggers explosion
+const STEPS: { t: number; liveControls: Partial<Controls> }[] = [
+  { t: 500,  liveControls: { explosionForce: 1.5,  timeScale: 0.5, disableWalls: false, explosionDurationMs: 2000 } },
+  { t: 1100, liveControls: { explosionForce: 2.5,  timeScale: 0.7, disableWalls: false, explosionDurationMs: 2000 } },
+  { t: 1700, liveControls: { explosionForce: 4.0,  timeScale: 0.9, disableWalls: false, explosionDurationMs: 2000 } },
+  { t: 2300, liveControls: { explosionForce: 6.5,  timeScale: 1.1, disableWalls: false, explosionDurationMs: 2000 } },
+  // Final blast: massive force, walls off, long duration so pieces keep flying through the fade
+  { t: 2900, liveControls: { explosionForce: 35.0, timeScale: 2.0, disableWalls: true,  explosionDurationMs: 8000 } },
+];
 
-// Timeline (ms) — pieces stay scattered, overlay just fades out
-const T = {
-  jitter: 500,
-  explode: 1100,
-  fade: 2300,
-  done: 2900,
-};
+const T_FADE = 3500;
+const T_DONE = 4500;
+
+type Phase = "enter" | "explode" | "fade" | "done";
 
 export default function Loader() {
   const [phase, setPhase] = useState<Phase>("enter");
   const [triggerExplode, setTriggerExplode] = useState(false);
+  const [liveControls, setLiveControls] = useState<Partial<Controls>>({});
 
   useEffect(() => {
     document.body.style.background = "#141414";
     document.body.style.margin = "0";
     document.body.style.overflow = "hidden";
 
-    const timers = [
-      setTimeout(() => setPhase("jitter"), T.jitter),
-      setTimeout(() => {
-        setPhase("explode");
-        setTriggerExplode(true);
-      }, T.explode),
-      setTimeout(() => setPhase("fade"), T.fade),
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Escalation steps — each sets new physics then re-fires explosion
+    STEPS.forEach(({ t, liveControls: stepControls }) => {
+      timers.push(
+        setTimeout(() => {
+          setPhase("explode");
+          setLiveControls(stepControls);
+          setTriggerExplode(false);
+          setTimeout(() => setTriggerExplode(true), 50);
+        }, t)
+      );
+    });
+
+    timers.push(setTimeout(() => setPhase("fade"), T_FADE));
+    timers.push(
       setTimeout(() => {
         setPhase("done");
         window.parent.postMessage("loader-done", "*");
-      }, T.done),
-    ];
+      }, T_DONE)
+    );
 
     return () => {
       timers.forEach(clearTimeout);
@@ -78,20 +95,6 @@ export default function Loader() {
   return (
     <>
       <style>{`
-        @keyframes bannerJitter {
-          0%,  100% { transform: translate(0px,    0px)   rotate(0deg); }
-          8%         { transform: translate(-4px,  -3px)  rotate(-0.4deg); }
-          16%        { transform: translate(5px,    2px)  rotate(0.5deg); }
-          24%        { transform: translate(-6px,   3px)  rotate(-0.6deg); }
-          32%        { transform: translate(6px,   -2px)  rotate(0.6deg); }
-          40%        { transform: translate(-3px,   5px)  rotate(-0.3deg); }
-          48%        { transform: translate(4px,   -5px)  rotate(0.4deg); }
-          56%        { transform: translate(-7px,   2px)  rotate(-0.7deg); }
-          64%        { transform: translate(7px,   -3px)  rotate(0.7deg); }
-          72%        { transform: translate(-5px,  -4px)  rotate(-0.5deg); }
-          80%        { transform: translate(5px,    4px)  rotate(0.5deg); }
-          88%        { transform: translate(-3px,  -6px)  rotate(-0.3deg); }
-        }
         @keyframes bannerEnter {
           from { opacity: 0; transform: scale(0.92); }
           to   { opacity: 1; transform: scale(1); }
@@ -117,14 +120,9 @@ export default function Loader() {
         <div
           style={{
             width: "100%",
-            maxWidth: "1440px",
-            padding: "0 64px",
-            boxSizing: "border-box",
             animation:
               phase === "enter"
                 ? "bannerEnter 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards"
-                : phase === "jitter"
-                ? "bannerJitter 0.12s ease-in-out infinite"
                 : "none",
           }}
         >
@@ -133,6 +131,8 @@ export default function Loader() {
             initialControls={LOADER_CONTROLS}
             persistControls={false}
             triggerExplode={triggerExplode}
+            fillViewport={true}
+            liveControls={liveControls}
           />
         </div>
       </div>

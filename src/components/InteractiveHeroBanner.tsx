@@ -139,6 +139,7 @@ interface Controls {
   wallRestitution: number; // Energy retained on bounce
   wallFriction: number; // Tangential damping on collision
   wallSpinDamping: number; // Spin damping on impact
+  disableWalls?: boolean; // When true, fragments fly freely off screen
 }
 
 // ============================================================================
@@ -845,6 +846,18 @@ const PRESETS: Record<PresetKey, {
 
           const nextOffsetX = frag.offsetX + newVx * dt;
           const nextOffsetY = frag.offsetY + newVy * dt;
+          if (controls.disableWalls) {
+            return {
+              ...frag,
+              vx: newVx,
+              vy: newVy,
+              vr: newVr,
+              offsetX: nextOffsetX,
+              offsetY: nextOffsetY,
+              rotation: frag.rotation + newVr * dt,
+              isExploding: isExplodingNow,
+            };
+          }
           const bounced = bounceWithinBounds(
             frag.shape,
             nextOffsetX,
@@ -876,6 +889,18 @@ const PRESETS: Record<PresetKey, {
           const nextVx = frag.vx * damping;
           const nextVy = frag.vy * damping;
           const nextVr = frag.vr * damping;
+          if (controls.disableWalls) {
+            return {
+              ...frag,
+              vx: nextVx,
+              vy: nextVy,
+              vr: nextVr,
+              offsetX: nextOffsetX,
+              offsetY: nextOffsetY,
+              rotation: frag.rotation + frag.vr * dt,
+              isExploding: isExplodingNow,
+            };
+          }
           const bounced = bounceWithinBounds(
             frag.shape,
             nextOffsetX,
@@ -990,6 +1015,8 @@ interface InteractiveHeroBannerProps {
   initialControls?: Partial<Controls>;
   persistControls?: boolean;
   triggerExplode?: boolean;
+  fillViewport?: boolean;
+  liveControls?: Partial<Controls>;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
@@ -1002,6 +1029,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   initialControls,
   persistControls = true,
   triggerExplode,
+  fillViewport = false,
+  liveControls,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1098,6 +1127,12 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       }, i * 60);
     });
   }, [triggerExplode]);
+
+  // Live controls — merge incoming partial controls into state each time they change
+  useEffect(() => {
+    if (!liveControls) return;
+    setControls(prev => ({ ...prev, ...liveControls }));
+  }, [liveControls]);
 
   const effectiveControls = useMemo(() => {
     if (!isUnderLoad) return controls;
@@ -1461,13 +1496,13 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     : 0;
 
   return (
-    <div className={`relative w-full ${className}`} style={{ maxWidth: 1312 }}>
+    <div className={`relative w-full ${className}`} style={fillViewport ? undefined : { maxWidth: 1312 }}>
       {/* Main Banner */}
       <div
         ref={containerRef}
         className="relative w-full overflow-visible rounded-2xl"
-        style={{ 
-          aspectRatio: `${viewBox.width} / ${viewBox.height}`,
+        style={{
+          ...(fillViewport ? { height: '100vh' } : { aspectRatio: `${viewBox.width} / ${viewBox.height}` }),
           background: 'transparent',
           cursor: customCursor,
         }}
@@ -1480,7 +1515,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           width="100%"
           height="100%"
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
-          preserveAspectRatio="xMidYMid meet"
+          preserveAspectRatio={fillViewport ? "none" : "xMidYMid meet"}
           style={{ display: 'block', willChange: 'transform', overflow: 'visible' }}
         >
           {/* Filters for effects */}
