@@ -158,6 +158,7 @@ type ControlPanelExtraProps = {
   pendingPreset: BannerPreset | null;
   clearPendingPreset: () => void;
   onSyncBannerState: (controls: Controls, updateControl: (key: keyof Controls, value: number) => void) => void;
+  onSyncReset: (resetFn: () => void) => void;
   onReverseColors: () => void;
   onSavePreset: () => void;
   onDeletePreset: () => void;
@@ -182,6 +183,7 @@ const ControlPanel = ({
   pendingPreset,
   clearPendingPreset,
   onSyncBannerState,
+  onSyncReset,
   onReverseColors,
   onSavePreset,
   onDeletePreset,
@@ -193,6 +195,10 @@ const ControlPanel = ({
   useEffect(() => {
     onSyncBannerState(controls, updateControl);
   }, [controls, updateControl, onSyncBannerState]);
+
+  useEffect(() => {
+    onSyncReset(onReset);
+  }, [onReset, onSyncReset]);
 
   const updateControlAndClearSaved = (key: keyof Controls, value: number) => {
     clearActiveSavedPreset();
@@ -364,6 +370,7 @@ const Index = () => {
   const [savedPresets, setSavedPresets] = useState<BannerPreset[]>(() => loadPresetsFromStorage());
   const [pendingPreset, setPendingPreset] = useState<BannerPreset | null>(null);
   const [bannerControls, setBannerControls] = useState<Controls | null>(null);
+  const [bannerReset, setBannerReset] = useState<(() => void) | null>(null);
   const [bannerUpdateControl, setBannerUpdateControl] = useState<((key: keyof Controls, value: number) => void) | null>(null);
   const [openPickerIndex, setOpenPickerIndex] = useState<number | null>(null);
   const [activeSavedPresetId, setActiveSavedPresetId] = useState<string | null>(null);
@@ -388,47 +395,33 @@ const Index = () => {
     const hidden = new Set(deletedColorPresetNames);
     const groups = [
       {
-        name: "Neon",
+        name: "Soft",
         presets: [
-          { name: "Glitch", stops: ["#FF0080", "#CC00FF", "#6600FF", "#0066FF", "#00CCFF", "#00FF9F"] },
-          { name: "Laser", stops: ["#FF3864", "#FF6B00", "#FFDD00", "#00E5FF", "#4D00FF", "#FF00FF"] },
-          { name: "Hologram", stops: ["#E040FB", "#7C4DFF", "#448AFF", "#00E5FF", "#69FF47", "#FFEE00"] },
-          { name: "Circuit", stops: ["#00FF9F", "#00E5FF", "#0080FF", "#5500FF", "#AA00FF", "#FF0080"] },
-          { name: "Plasma", stops: ["#FF4081", "#FF6D00", "#FFD600", "#76FF03", "#00E5FF", "#7C4DFF"] },
-          { name: "Overload", stops: ["#FF006E", "#FF7600", "#FFCC00", "#00FF85", "#00B4D8", "#9B5DE5"] },
-        ],
-      },
-      {
-        name: "Synthwave",
-        presets: [
-          { name: "Outrun", stops: ["#F72585", "#B5179E", "#7209B7", "#3A0CA3", "#4361EE", "#4CC9F0"] },
+          { name: "Haze",      stops: ["#FFD166", "#FF9E64", "#FF6E91", "#D490D4", "#8ABFFF", "#A5F3FC"] },
           { name: "Vaporwave", stops: ["#FF6AD5", "#C774E8", "#AD8CFF", "#8795E8", "#94D0FF", "#9BFAFF"] },
-          { name: "Miami", stops: ["#FF2A6D", "#FF5C8D", "#FF89B5", "#05D9E8", "#00B4D8", "#48CAE4"] },
-          { name: "Cassette", stops: ["#FFBE0B", "#FB5607", "#FF006E", "#8338EC", "#3A86FF", "#06D6A0"] },
-          { name: "Neon Noir", stops: ["#FF00FF", "#DD11EE", "#BB22DD", "#9933FF", "#5544FF", "#00AAFF"] },
-          { name: "Synth", stops: ["#FFB700", "#FF6B6B", "#FF006E", "#9B5DE5", "#5E60CE", "#48CAE4"] },
+          { name: "Dusk",      stops: ["#112136", "#2D3954", "#4F4F76", "#767D9C", "#A198B2", "#C5B6CB"] },
+          { name: "Bloom",     stops: ["#FD79A8", "#E84393", "#A29BFE", "#6C5CE7", "#00CEC9", "#55EFC4"] },
+          { name: "Vapour",    stops: ["#844C3C", "#F7CCC0", "#E7D2CD", "#FCFEFF", "#91C4EE", "#FCFEFF"] },
+          { name: "Glacier",   stops: ["#3C7A5D", "#C0F7D9", "#DBEDE3", "#D5CBCA", "#FFFFFE", "#FFFFFE"] },
+          { name: "Linen",     stops: ["#4F4879", "#C5C0F7", "#C7C6D3", "#BCAF73", "#FFFAE4", "#FFFCEB"] },
+          { name: "Petal",     stops: ["#76486C", "#F7C0E9", "#DFCED9", "#B7C186", "#FAFEEB", "#F9FFE2"] },
         ],
       },
       {
-        name: "Lo-Fi",
+        name: "Vivid",
         presets: [
-          { name: "Haze", stops: ["#FFD166", "#FF9E64", "#FF6E91", "#D490D4", "#8ABFFF", "#A5F3FC"] },
-          { name: "Analog", stops: ["#FF9F43", "#EE5A24", "#C44569", "#9980FA", "#5F27CD", "#706FD3"] },
-          { name: "Tokyo", stops: ["#FF6E9C", "#B97BFF", "#7289FF", "#60A0FF", "#4ECDC4", "#A0FFB5"] },
-          { name: "Sunset Tape", stops: ["#FF6B6B", "#FE9C7F", "#FFEAA7", "#81ECEC", "#74B9FF", "#A29BFE"] },
-          { name: "Bloom", stops: ["#FD79A8", "#E84393", "#A29BFE", "#6C5CE7", "#00CEC9", "#55EFC4"] },
-        ],
-      },
-      {
-        name: "Spectrum",
-        presets: [
-          { name: "Tropics", stops: ["#00F5D4", "#00BBF9", "#4361EE", "#3A0CA3", "#7209B7", "#F72585"] },
-          { name: "Retro", stops: ["#F9C74F", "#F9844A", "#F8961E", "#F3722C", "#F94144", "#90BE6D"] },
-          { name: "Twilight", stops: ["#0B1021", "#1C2541", "#3A506B", "#5BC0BE", "#9EE493", "#F6F740"] },
-          { name: "Nebula", stops: DEFAULT_COLOR_PRESET_STOPS },
-          { name: "Aurora Boreal", stops: ["#001219", "#005F73", "#0A9396", "#94D2BD", "#E9D8A6", "#EE9B00"] },
-          { name: "Spectra", stops: ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#8B00FF"] },
-          { name: "Rainbow", stops: ["#FF5F6D", "#FFC371", "#FDEB71", "#C0F2D8", "#8EC5FC", "#E0C3FC"] },
+          { name: "Miami",     stops: ["#FF2A6D", "#FF5C8D", "#FF89B5", "#05D9E8", "#00B4D8", "#48CAE4"] },
+          { name: "Tokyo",     stops: ["#FF6E9C", "#B97BFF", "#7289FF", "#60A0FF", "#4ECDC4", "#A0FFB5"] },
+          { name: "Flare",     stops: ["#2D0059", "#7B0080", "#CC0044", "#FF2200", "#FF7700", "#FFCC99"] },
+          { name: "Rosé",      stops: ["#5D0041", "#8A144F", "#C01C3F", "#E06A87", "#F99684", "#FFC6AA"] },
+          { name: "Twilight",  stops: ["#0B1021", "#1C2541", "#3A506B", "#5BC0BE", "#9EE493", "#F6F740"] },
+          { name: "Frostbite", stops: ["#360004", "#BF4A4A", "#B56F6B", "#005954", "#00C7BE", "#A2FFF6"] },
+          { name: "Regal",     stops: ["#30014B", "#8F44C6", "#9E7CBC", "#E0C374", "#9E7E00", "#473700"] },
+          { name: "Ember",     stops: ["#4A0001", "#DC0E0E", "#B89D99", "#004344", "#00A5B4", "#8BEFFD"] },
+          { name: "Copper",    stops: ["#2F1100", "#EE8B44", "#E1AA87", "#77A6D2", "#307FC0", "#0F3E61"] },
+          { name: "Jungle",    stops: ["#0A621A", "#44EE5B", "#BBCFBB", "#FF8CD1", "#FFF1F8", "#85516E"] },
+          { name: "Acid",      stops: ["#597215", "#C5F939", "#C9D2BB", "#FFB5FE", "#FFFCFF", "#936B96"] },
+          { name: "Gilded",    stops: ["#2B0027", "#C544B6", "#9E7096", "#E0B400", "#FFF6DE", "#7D6930"] },
         ],
       },
     ];
@@ -637,6 +630,7 @@ const Index = () => {
                 setBannerControls(controls);
                 setBannerUpdateControl(() => updateControl);
               }}
+              onSyncReset={(resetFn) => setBannerReset(() => resetFn)}
               onReverseColors={() => {
                 setActiveSavedPresetId(null);
                 setColorStops([...normalizedStops].reverse());
@@ -685,8 +679,10 @@ const Index = () => {
               }}
             >
             <div style={{ overflow: "hidden" }}>
+            <div className="relative">
             <div
-              className={`${hasInteracted ? "opacity-50 pointer-events-none" : ""}`}
+              className={`transition-all duration-300 ${hasInteracted ? "pointer-events-none" : ""}`}
+              style={hasInteracted ? { filter: "blur(4px)", opacity: 0.4 } : undefined}
               aria-disabled={hasInteracted}
             >
               <div className="flex flex-col gap-3">
@@ -748,7 +744,7 @@ const Index = () => {
               {savedPresets.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[10px] uppercase tracking-wider text-neutral-500">Saved</span>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid gap-2 p-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
                   {savedPresets.map((preset) => {
                     const isSelected = activeSavedPresetId === preset.id;
                     return (
@@ -758,24 +754,20 @@ const Index = () => {
                           applySavedPreset(preset);
                         }}
                         title={preset.name || "Saved preset"}
-                        className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border inline-flex items-center gap-2 ${
+                        className={`group rounded-lg overflow-hidden transition-all ${
                           isSelected
-                            ? "bg-neutral-700 text-neutral-100 border-neutral-500"
-                            : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-transparent"
+                            ? "ring-2 ring-white/60 ring-offset-1 ring-offset-black"
+                            : "ring-1 ring-white/10 hover:ring-white/30"
                         }`}
                       >
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="inline-flex -space-x-1">
-                            {(preset.colorStops || []).slice(0, 3).map((c, i) => (
-                              <span
-                                key={`${preset.id}-swatch-${i}`}
-                                className="h-3 w-3 rounded border border-white/10"
-                                style={{ backgroundColor: c }}
-                              />
-                            ))}
-                          </span>
-                          <span>{preset.name || "Saved"}</span>
-                        </span>
+                        <div className="flex w-full h-7">
+                          {(preset.colorStops || []).map((c, i) => (
+                            <div key={`${preset.id}-s-${i}`} className="flex-1 h-full" style={{ backgroundColor: c }} />
+                          ))}
+                        </div>
+                        <div className="px-1.5 py-1 bg-neutral-900/80 text-[9px] text-neutral-400 group-hover:text-neutral-200 truncate text-center uppercase tracking-wider transition-colors">
+                          {preset.name || "Saved"}
+                        </div>
                       </button>
                     );
                   })}
@@ -785,9 +777,9 @@ const Index = () => {
               {colorPresetGroups.map((group) => (
                 <div key={group.name} className="flex flex-col gap-1.5">
                   <span className="text-[10px] uppercase tracking-wider text-neutral-500">{group.name}</span>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid gap-2 p-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
                   {group.presets.map((preset) => {
-                    const isSelected = selectedPreset === preset.name;
+                    const isSelected = activeSavedPresetId === null && selectedPreset === preset.name;
                     return (
                       <button
                         key={preset.name}
@@ -796,13 +788,20 @@ const Index = () => {
                           setColorStops(preset.stops);
                           setSelectedPreset(preset.name);
                         }}
-                        className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border ${
+                        className={`group rounded-lg overflow-hidden transition-all ${
                           isSelected
-                            ? "bg-neutral-700 text-neutral-100 border-neutral-500"
-                            : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-transparent"
+                            ? "ring-2 ring-white/60 ring-offset-1 ring-offset-black"
+                            : "ring-1 ring-white/10 hover:ring-white/30"
                         }`}
                       >
-                        {preset.name}
+                        <div className="flex w-full h-7">
+                          {preset.stops.map((c, i) => (
+                            <div key={`${preset.name}-s-${i}`} className="flex-1 h-full" style={{ backgroundColor: c }} />
+                          ))}
+                        </div>
+                        <div className="px-1.5 py-1 bg-neutral-900/80 text-[9px] text-neutral-400 group-hover:text-neutral-200 truncate text-center uppercase tracking-wider transition-colors">
+                          {preset.name}
+                        </div>
                       </button>
                     );
                   })}
@@ -811,6 +810,20 @@ const Index = () => {
               ))}
             </div>
           </div>
+          {hasInteracted && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <button
+                onClick={() => {
+                  setActiveSavedPresetId(null);
+                  bannerReset?.();
+                }}
+                className="px-4 py-2 rounded-full bg-neutral-800/90 border border-white/20 text-neutral-200 text-[11px] uppercase tracking-wider backdrop-blur-sm hover:bg-neutral-700/90 hover:border-white/40 transition-all shadow-lg"
+              >
+                Reset to edit colors
+              </button>
+            </div>
+          )}
+            </div>
             </div>
             </div>
         </div>
