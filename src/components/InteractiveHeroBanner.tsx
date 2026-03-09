@@ -989,6 +989,7 @@ interface InteractiveHeroBannerProps {
   onResetComplete?: () => void;
   initialControls?: Partial<Controls>;
   persistControls?: boolean;
+  triggerExplode?: boolean;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
@@ -1000,6 +1001,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   onResetComplete,
   initialControls,
   persistControls = true,
+  triggerExplode,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1077,6 +1079,25 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   useEffect(() => {
     pointerRef.current = pointer;
   }, [pointer]);
+
+  // Programmatic explosion trigger — fires PointerEvents at each shape centroid
+  useEffect(() => {
+    if (!triggerExplode || !containerRef.current) return;
+    const container = containerRef.current;
+    // Normalized X centroids based on STARTER_SVG shape layout
+    const xPositions = [0.232, 0.585, 0.769, 0.878, 0.944, 0.987];
+    xPositions.forEach((normX, i) => {
+      setTimeout(() => {
+        const r = container.getBoundingClientRect();
+        container.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true,
+          clientX: r.left + normX * r.width,
+          clientY: r.top + r.height * 0.5,
+          pointerType: 'mouse',
+        }));
+      }, i * 60);
+    });
+  }, [triggerExplode]);
 
   const effectiveControls = useMemo(() => {
     if (!isUnderLoad) return controls;
