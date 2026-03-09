@@ -140,6 +140,7 @@ interface Controls {
   wallFriction: number; // Tangential damping on collision
   wallSpinDamping: number; // Spin damping on impact
   disableWalls?: boolean; // When true, fragments fly freely off screen
+  disableReorg: number; // When >= 0.5, fragments stay scattered after explosion
 }
 
 // ============================================================================
@@ -218,6 +219,7 @@ const DEFAULT_CONTROLS: Controls = {
   wallRestitution: 0.7,
   wallFriction: 0.2,
   wallSpinDamping: 0.1,
+  disableReorg: 0,
 };
 const distance = (x1: number, y1: number, x2: number, y2: number) =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -680,7 +682,8 @@ const PRESETS: Record<PresetKey, {
       
       // Check if we should start settling (no clicks for a while)
       const timeSinceLastClick = newClickTime - state.lastClickTime;
-      const shouldStartSettling = timeSinceLastClick > settleDelay &&
+      const shouldStartSettling = controls.disableReorg < 0.5 &&
+                                  timeSinceLastClick > settleDelay &&
                                   state.shardFragments.length > 0 &&
                                   !state.isReturning;
 

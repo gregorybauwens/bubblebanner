@@ -2,7 +2,7 @@ import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, type Control
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ColorPickerGradient from "@/components/ColorPickerGradient";
-import { ChevronDown, Trash } from "lucide-react";
+import { ChevronDown, Trash, Save, RotateCcw } from "lucide-react";
 import {
   decodePresetFromUrl,
   loadPresetsFromStorage,
@@ -230,7 +230,7 @@ const ControlPanel = ({
         <button
           onClick={onReverseColors}
           disabled={isColorsLocked}
-          className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
+          className={`h-8 w-8 rounded-lg transition-colors flex items-center justify-center ${
             isColorsLocked
               ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
               : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
@@ -238,26 +238,28 @@ const ControlPanel = ({
           title="Reverse colors"
           aria-label="Reverse colors"
         >
-          ↔
+          <span className="text-[13px]">↔</span>
         </button>
         <button
           onClick={onSavePreset}
           disabled={isSaveDisabled}
-          className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${
+          className={`h-8 w-8 rounded-lg transition-colors flex items-center justify-center ${
             isSaveDisabled
               ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
               : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
           }`}
+          title="Save preset"
+          aria-label="Save preset"
         >
-          Save
+          <Save size={14} aria-hidden="true" />
         </button>
         <button
           onClick={onDeletePreset}
           disabled={isDeleteDisabled}
-          className={`h-7 w-7 rounded-md text-[12px] uppercase tracking-wider transition-colors flex items-center justify-center ${
+          className={`h-8 w-8 rounded-lg transition-colors flex items-center justify-center ${
             isDeleteDisabled
               ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-              : "bg-neutral-800 hover:bg-neutral-700 text-white"
+              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
           }`}
           title="Delete selected preset"
           aria-label="Delete selected preset"
@@ -265,15 +267,16 @@ const ControlPanel = ({
           <Trash size={14} aria-hidden="true" />
         </button>
       </div>
-      <div className="w-px h-4 bg-neutral-700" />
+      <div className="w-px h-5 bg-neutral-700" />
       <button
         onClick={() => {
           clearActiveSavedPreset();
           onReset();
         }}
-        className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+        className="h-8 px-3 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-100 text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1.5"
       >
-        Reset Banner
+        <RotateCcw size={12} aria-hidden="true" />
+        Reset
       </button>
     </div>
   <div
@@ -339,8 +342,28 @@ const ControlPanel = ({
 
           {/* Reorg controls */}
           <div className="w-full min-w-0 flex flex-col gap-1">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Reorg</label>
-            <div className="flex flex-col gap-1 items-start justify-start h-fit">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Reorg</label>
+              <button
+                onClick={() => {
+                  const next = controls.disableReorg < 0.5 ? 1 : 0;
+                  updateControlAndClearSaved("disableReorg", next);
+                }}
+                className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                  controls.disableReorg < 0.5
+                    ? "bg-neutral-500"
+                    : "bg-neutral-700"
+                }`}
+                title={controls.disableReorg < 0.5 ? "Reorg enabled" : "Reorg disabled"}
+                aria-label="Toggle reorg"
+              >
+                <span
+                  className="absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-all"
+                  style={{ left: controls.disableReorg < 0.5 ? 14 : 2 }}
+                />
+              </button>
+            </div>
+            <div className={`flex flex-col gap-1 items-start justify-start h-fit transition-opacity ${controls.disableReorg >= 0.5 ? "opacity-30 pointer-events-none" : ""}`}>
               <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
               <ControlSlider
                 label="Float ms"
