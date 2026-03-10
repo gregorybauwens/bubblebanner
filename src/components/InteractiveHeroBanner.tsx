@@ -15,7 +15,38 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { converter, formatHex } from 'culori';
+import {
+  type Shape,
+  type ViewBox,
+  type ShardFragment,
+  type PresetState,
+  type ShapeTransform,
+  type Controls,
+  DEFAULT_COLOR_STOPS,
+  DEFAULT_CONTROLS,
+  lerp,
+  clamp,
+  smoothstep,
+  distance,
+  seededRandom,
+  getPaletteColor,
+  applyFillToShape,
+  constrainToBounds,
+  bounceWithinBounds,
+  createFragmentsFromShape,
+  createInitialState,
+  LOCKED_REORG_FLOAT_STRENGTH,
+  LOCKED_REORG_FLOAT_DRAG,
+  WALL_PADDING,
+  MAX_TOTAL_FRAGMENTS,
+  BURST_WINDOW_S,
+  MAX_BURST_CLICKS,
+  LOAD_FRAGMENT_THRESHOLD,
+  LOAD_DT_THRESHOLD,
+  LOAD_RECOVERY_THRESHOLD,
+} from '@/lib/bannerPhysics';
+
+export { DEFAULT_COLOR_STOPS, DEFAULT_CONTROLS };
 
 // Memoized SVG inner element to avoid re-parsing dangerouslySetInnerHTML on every render
 const ShapeElement = memo(({ html }: { html: string }) => (
@@ -34,318 +65,9 @@ const STARTER_SVG = `<svg width="1312" height="380" viewBox="0 0 1312 380" fill=
 <rect x="1278" y="0" width="34"  height="380" rx="17"  fill="#A5F3FC"/>
 </svg>`;
 
-export const DEFAULT_COLOR_STOPS = [
-  "#ECB300",
-  "#EB9F00",
-  "#EF8A00",
-  "#EB7800",
-  "#E56100",
-  "#E74C00",
-];
-
-// ============================================================================
-// TYPES
-// ============================================================================
-interface Shape {
-  id: string;
-  type: 'rect' | 'circle' | 'ellipse' | 'path' | 'polygon' | 'polyline' | 'line';
-  element: string; // Original SVG element as string
-  attrs: Record<string, string>;
-  centroid: { x: number; y: number };
-  bounds: { x: number; y: number; width: number; height: number };
-  fill?: string;
-  stroke?: string;
-  opacity?: number;
-  // For fragmented shapes
-  parentId?: string;
-  generation?: number;
-}
-
-interface ViewBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-type PresetKey = 'voronoi';
-
-// Fragment tracks each piece after shattering
-
-// Fragment tracks each piece after shattering
-interface ShardFragment {
-  id: string;
-  shape: Shape; // The actual shape data for this fragment
-  originalShape: Shape; // Reference to the original parent shape
-  offsetX: number;
-  offsetY: number;
-  rotation: number;
-  vx: number;
-  vy: number;
-  vr: number;
-  generation: number;
-  spawnTime: number;
-  spawnDelayMs: number;
-  isExploding: boolean;
-}
-
-
-interface PresetState {
-  clickPoint: { x: number; y: number } | null;
-  clickTime: number;
-  // Voronoi shatter state - fragments replace original shapes
-  shardFragments: ShardFragment[];
-  shatteredShapeIds: Set<string>; // Track which original shapes have been shattered
-  isReturning: boolean;
-  returnStartTime: number;
-  returnMode: 'grid' | 'original';
-  reorgPhase: 'none' | 'float' | 'settle' | 'reset';
-  lastClickTime: number;
-  lastExplosionTime: number;
-  cachedGridTargets: { col: number; row: number }[] | null;
-}
-
-interface ShapeTransform {
-  x: number;
-  y: number;
-  scale: number;
-  rotate: number;
-  opacity: number;
-  filterStrength: number;
-  brightness: number;
-}
-
-interface Controls {
-  hoverStrength: number;
-  hoverRadius: number;
-  clickStrength: number;
-  spring: number;
-  damping: number;
-  timeScale: number;
-  // Voronoi specific
-  shardSpread: number;
-  settleTime: number; // Delay after last shatter before returning
-  floatStrength: number; // Gentle pull toward grid targets
-  floatDrag: number; // Drag during float phase
-  floatDurationMs: number; // Duration of float phase before settle
-  returnSpring: number;
-  settleDamping: number; // Higher = less bouncy, quicker settle
-  // Explosion controls
-  explosionForce: number; // How hard fragments explode outward
-  explosionSpin: number; // How much fragments rotate on explosion
-  explosionDurationMs: number; // Time in explosion phase after spawn
-  fractureStaggerMsMax: number; // Max micro-stagger delay for fracture
-  // Wall interaction controls
-  wallRestitution: number; // Energy retained on bounce
-  wallFriction: number; // Tangential damping on collision
-  wallSpinDamping: number; // Spin damping on impact
-  disableWalls?: boolean; // When true, fragments fly freely off screen
-  disableReorg: number; // When >= 0.5, fragments stay scattered after explosion
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-const smoothstep = (t: number) => t * t * (3 - 2 * t);
-const toHsv = converter('hsv');
-const hsvToHex = (color: { h?: number; s?: number; v?: number }) =>
-  formatHex({ mode: 'hsv', h: color.h ?? 0, s: color.s ?? 0, v: color.v ?? 0 });
-
-const interpolateHue = (a: number, b: number, t: number) => {
-  const delta = ((b - a + 540) % 360) - 180;
-  return (a + delta * t + 360) % 360;
-};
-
-const getPaletteColor = (t: number, stops: string[]) => {
-  if (stops.length === 0) return '#ECB300';
-  if (stops.length === 1) return stops[0];
-  const scaled = clamp(t, 0, 1) * (stops.length - 1);
-  const index = Math.floor(scaled);
-  const localT = scaled - index;
-  const a = toHsv(stops[index]) ?? { h: 0, s: 0, v: 0 };
-  const b = toHsv(stops[Math.min(index + 1, stops.length - 1)]) ?? { h: 0, s: 0, v: 0 };
-  const h = interpolateHue(a.h ?? 0, b.h ?? 0, localT);
-  const s = lerp(a.s ?? 0, b.s ?? 0, localT);
-  const v = lerp(a.v ?? 0, b.v ?? 0, localT);
-  return hsvToHex({ h, s, v });
-};
-
-const applyFillToShape = (shape: Shape, color: string): Shape => {
-  const updatedElement = shape.element.includes('fill=')
-    ? shape.element.replace(/fill="[^"]*"/, `fill="${color}"`)
-    : shape.element.replace(/<([^\\s>]+)/, `<$1 fill="${color}"`);
-  return {
-    ...shape,
-    fill: color,
-    attrs: { ...shape.attrs, fill: color },
-    element: updatedElement,
-  };
-};
-const BURST_WINDOW_S = 0.6;
-const MAX_BURST_CLICKS = 9;
-const MAX_TOTAL_FRAGMENTS = 320;
 const MAX_TOTAL_CRACK_LINES = 180;
-const LOAD_FRAGMENT_THRESHOLD = 180;
-const LOAD_DT_THRESHOLD = 0.02;
-const LOAD_RECOVERY_THRESHOLD = 0.018;
 const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
-
-// Locked controls (Reorg)
-const LOCKED_REORG_FLOAT_STRENGTH = 0.9;
-const LOCKED_REORG_FLOAT_DRAG = 0.6;
-const WALL_PADDING = 12;
-
-export const DEFAULT_CONTROLS: Controls = {
-  hoverStrength: 1.2,
-  hoverRadius: 0.23,
-  clickStrength: 1,
-  spring: 1.2,
-  damping: 1.5,
-  timeScale: 1,
-  shardSpread: 0.6,
-  settleTime: 1.9,
-  floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
-  floatDrag: LOCKED_REORG_FLOAT_DRAG,
-  floatDurationMs: 200,
-  returnSpring: 1.1,
-  settleDamping: 2.0,
-  explosionForce: 1.8,
-  explosionSpin: 2.2,
-  explosionDurationMs: 1300,
-  fractureStaggerMsMax: 80,
-  wallRestitution: 0.7,
-  wallFriction: 0.2,
-  wallSpinDamping: 0.1,
-  disableReorg: 0,
-};
-const distance = (x1: number, y1: number, x2: number, y2: number) =>
-  Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-
-// Simple seeded random for deterministic behavior
-const seededRandom = (seed: number) => {
-  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-  return x - Math.floor(x);
-};
-
-// Simplex-like noise approximation
-const noise2D = (x: number, y: number, seed: number = 0) => {
-  const n = seededRandom(x * 1.1 + y * 2.3 + seed);
-  const m = seededRandom(x * 3.7 + y * 1.9 + seed + 100);
-  return (n + m) / 2 - 0.5;
-};
-
-// Constrain transform to keep shape within viewBox boundaries
-// Returns adjusted x, y offsets that respect container bounds
-const constrainToBounds = (
-  shape: { bounds: { x: number; y: number; width: number; height: number } },
-  offsetX: number,
-  offsetY: number,
-  scale: number,
-  viewBox: { x: number; y: number; width: number; height: number },
-  padding: number = 0
-): { x: number; y: number } => {
-  const bounds = shape.bounds;
-  const scaledWidth = bounds.width * scale;
-  const scaledHeight = bounds.height * scale;
-  
-  // Calculate where the shape would be after transform
-  const newLeft = bounds.x + offsetX + (bounds.width - scaledWidth) / 2;
-  const newRight = newLeft + scaledWidth;
-  const newTop = bounds.y + offsetY + (bounds.height - scaledHeight) / 2;
-  const newBottom = newTop + scaledHeight;
-  
-  // Container bounds
-  const containerLeft = viewBox.x + padding;
-  const containerRight = viewBox.x + viewBox.width - padding;
-  const containerTop = viewBox.y + padding;
-  const containerBottom = viewBox.y + viewBox.height - padding;
-  
-  let constrainedX = offsetX;
-  let constrainedY = offsetY;
-  
-  // Constrain horizontally with bounce-back effect
-  if (newLeft < containerLeft) {
-    const overshoot = containerLeft - newLeft;
-    constrainedX = offsetX + overshoot + overshoot * 0.2; // Slight bounce
-  } else if (newRight > containerRight) {
-    const overshoot = newRight - containerRight;
-    constrainedX = offsetX - overshoot - overshoot * 0.2;
-  }
-  
-  // Constrain vertically with bounce-back effect
-  if (newTop < containerTop) {
-    const overshoot = containerTop - newTop;
-    constrainedY = offsetY + overshoot + overshoot * 0.2;
-  } else if (newBottom > containerBottom) {
-    const overshoot = newBottom - containerBottom;
-    constrainedY = offsetY - overshoot - overshoot * 0.2;
-  }
-  
-  return { x: constrainedX, y: constrainedY };
-};
-
-const bounceWithinBounds = (
-  shape: { bounds: { x: number; y: number; width: number; height: number } },
-  offsetX: number,
-  offsetY: number,
-  vx: number,
-  vy: number,
-  vr: number,
-  viewBox: { x: number; y: number; width: number; height: number },
-  padding: number = 0,
-  restitution: number = 0.9,
-  friction: number = 0.1,
-  spinDamping: number = 0.1
-): { x: number; y: number; vx: number; vy: number; vr: number } => {
-  const bounds = shape.bounds;
-  const scaledWidth = bounds.width;
-  const scaledHeight = bounds.height;
-
-  let x = offsetX;
-  let y = offsetY;
-  let nextVx = vx;
-  let nextVy = vy;
-  let nextVr = vr;
-
-  const newLeft = bounds.x + x;
-  const newRight = newLeft + scaledWidth;
-  const newTop = bounds.y + y;
-  const newBottom = newTop + scaledHeight;
-
-  const containerLeft = viewBox.x + padding;
-  const containerRight = viewBox.x + viewBox.width - padding;
-  const containerTop = viewBox.y + padding;
-  const containerBottom = viewBox.y + viewBox.height - padding;
-
-  if (newLeft < containerLeft) {
-    x += containerLeft - newLeft;
-    nextVx = Math.abs(nextVx) * restitution;
-    nextVy *= Math.max(0, 1 - friction);
-    nextVr *= Math.max(0, 1 - spinDamping);
-  } else if (newRight > containerRight) {
-    x -= newRight - containerRight;
-    nextVx = -Math.abs(nextVx) * restitution;
-    nextVy *= Math.max(0, 1 - friction);
-    nextVr *= Math.max(0, 1 - spinDamping);
-  }
-
-  if (newTop < containerTop) {
-    y += containerTop - newTop;
-    nextVy = Math.abs(nextVy) * restitution;
-    nextVx *= Math.max(0, 1 - friction);
-    nextVr *= Math.max(0, 1 - spinDamping);
-  } else if (newBottom > containerBottom) {
-    y -= newBottom - containerBottom;
-    nextVy = -Math.abs(nextVy) * restitution;
-    nextVx *= Math.max(0, 1 - friction);
-    nextVr *= Math.max(0, 1 - spinDamping);
-  }
-
-  return { x, y, vx: nextVx, vy: nextVy, vr: nextVr };
-};
 
 // ============================================================================
 // SVG PARSER
@@ -438,219 +160,9 @@ const calculateBounds = (type: string, attrs: Record<string, string>) => {
 };
 
 // ============================================================================
-// FRAGMENT CREATION - Creates child shapes from a parent
-// ============================================================================
-const createFragmentsFromShape = (
-  shape: Shape,
-  clickPoint: { x: number; y: number },
-  viewBox: ViewBox,
-  controls: Controls,
-  generation: number,
-  currentTime: number,
-  shatterScale: number,
-  overrideFragmentCount?: number
-): ShardFragment[] => {
-  const bounds = shape.bounds;
-  const fragments: ShardFragment[] = [];
-  const shapeArea = bounds.width * bounds.height;
-  const viewBoxArea = viewBox.width * viewBox.height;
-  const areaRatio = viewBoxArea > 0 ? shapeArea / viewBoxArea : 0;
-  const sizeMultiplier = 1 + Math.min(areaRatio * 10, 2); // 1x to 3x
-  const baseCount = Math.round(2 + Math.random() * 2 * sizeMultiplier);
-  const scaledCount = Math.round(baseCount * shatterScale);
-  const firstClickBonus = generation === 1 && areaRatio > 0.1 ? 2 : 0;
-  const fragmentCount = overrideFragmentCount ?? Math.max(2, Math.min(scaledCount + firstClickBonus, 10));
-
-  const createSegmentSizes = (total: number, count: number, seed: number) => {
-    const weights = Array.from({ length: count }, (_, idx) => {
-      const r = seededRandom(seed * 11 + idx * 17);
-      return 0.25 + r ** 1.8;
-    });
-    const bigIndex = Math.floor(seededRandom(seed * 13) * count);
-    weights[bigIndex] += 1.2;
-    const sum = weights.reduce((acc, v) => acc + v, 0);
-    const sizes = weights.map((w) => (w / sum) * total);
-    const minSize = total * 0.08;
-    let totalShort = 0;
-    sizes.forEach((size, idx) => {
-      if (size < minSize) {
-        totalShort += minSize - size;
-        sizes[idx] = minSize;
-      }
-    });
-    if (totalShort > 0) {
-      let remaining = totalShort;
-      const order = sizes
-        .map((size, idx) => ({ size, idx }))
-        .sort((a, b) => b.size - a.size);
-      order.forEach(({ idx }) => {
-        if (remaining <= 0) return;
-        const reducible = Math.max(0, sizes[idx] - minSize);
-        const take = Math.min(reducible, remaining);
-        sizes[idx] -= take;
-        remaining -= take;
-      });
-    }
-    const scale = total / sizes.reduce((acc, v) => acc + v, 0);
-    return sizes.map((size) => size * scale);
-  };
-
-  // Determine if 2D grid splitting is needed (shape too large relative to viewBox)
-  const needsGridSplit = (bounds.width / viewBox.width > 0.6) ||
-                         (bounds.height / viewBox.height > 0.6);
-
-  let cols: number, rows: number;
-  if (needsGridSplit) {
-    // Distribute fragment count into a grid proportional to shape aspect ratio
-    const aspect = bounds.width / bounds.height;
-    cols = Math.max(1, Math.round(Math.sqrt(fragmentCount * aspect)));
-    rows = Math.max(1, Math.ceil(fragmentCount / cols));
-    // Ensure we have enough cells
-    while (cols * rows < fragmentCount) cols++;
-  } else {
-    const isHorizontalShape = bounds.width > bounds.height;
-    cols = isHorizontalShape ? fragmentCount : 1;
-    rows = isHorizontalShape ? 1 : fragmentCount;
-  }
-
-  const seedBase = Date.now() * 0.001 + fragmentCount;
-  const colSizes = createSegmentSizes(bounds.width, cols, seedBase);
-  const rowSizes = createSegmentSizes(bounds.height, rows, seedBase + 99);
-
-  let fragIndex = 0;
-  let cursorY = bounds.y;
-  for (let r = 0; r < rows; r++) {
-    let cursorX = bounds.x;
-    for (let c = 0; c < cols; c++) {
-      if (fragIndex >= fragmentCount) break;
-
-      const fragBounds = {
-        x: cursorX,
-        y: cursorY,
-        width: colSizes[c],
-        height: rowSizes[r],
-      };
-      cursorX += colSizes[c];
-
-      const seed = Date.now() + fragIndex * 1000 + Math.random() * 1000;
-
-      // Add some randomness to the slice
-      const jitterX = (seededRandom(seed) - 0.5) * fragBounds.width * 0.1;
-      const jitterY = (seededRandom(seed * 2) - 0.5) * fragBounds.height * 0.1;
-
-      const fragCentroid = {
-        x: fragBounds.x + fragBounds.width / 2 + jitterX,
-        y: fragBounds.y + fragBounds.height / 2 + jitterY,
-      };
-
-      // Calculate explosion direction from click point
-      const clickX = clickPoint.x * viewBox.width;
-      const clickY = clickPoint.y * viewBox.height;
-      const angleFromClick = Math.atan2(
-        fragCentroid.y - clickY,
-        fragCentroid.x - clickX
-      );
-
-      // Add some spread - wider angle variation for more chaotic explosion
-      const angleVariation = (seededRandom(seed * 3) - 0.5) * 1.2;
-      const finalAngle = angleFromClick + angleVariation;
-
-      // Explosion force calculation - much more intense burst
-      const baseSpeed = controls.explosionForce * 0.75;
-      const speedVariation = 0.7 + seededRandom(seed * 4) * 1.0; // More variation
-      const speed = baseSpeed * speedVariation * controls.shardSpread * shatterScale;
-
-      // Distance-based impulse - closer = stronger explosion
-      const distFromClick = distance(fragCentroid.x / viewBox.width, fragCentroid.y / viewBox.height, clickPoint.x, clickPoint.y);
-      const impulse = Math.max(0.8, 2.0 - distFromClick * 2.5) * (0.75 + shatterScale * 0.25); // Higher base impulse
-
-      const fragArea = Math.max(1, fragBounds.width * fragBounds.height);
-      const refArea = Math.max(1, bounds.width * bounds.height / fragmentCount);
-      const massFactor = clamp(Math.sqrt(refArea / fragArea), 0.6, 1.5);
-
-      // Create SVG element for the fragment (clipped rect)
-      const rx = parseFloat(shape.attrs.rx || '0');
-      const ry = parseFloat(shape.attrs.ry || rx.toString());
-      const scaledRx = Math.min(rx, fragBounds.width / 2, fragBounds.height / 2);
-      const scaledRy = Math.min(ry, fragBounds.width / 2, fragBounds.height / 2);
-
-      const fragElement = `<rect x="${fragBounds.x}" y="${fragBounds.y}" width="${fragBounds.width}" height="${fragBounds.height}" rx="${scaledRx}" ry="${scaledRy}" fill="${shape.fill || '#ECB300'}"/>`;
-
-      const fragShape: Shape = {
-        id: `frag-${shape.id}-${generation}-${fragIndex}-${Date.now()}`,
-        type: 'rect',
-        element: fragElement,
-        attrs: {
-          x: fragBounds.x.toString(),
-          y: fragBounds.y.toString(),
-          width: fragBounds.width.toString(),
-          height: fragBounds.height.toString(),
-          rx: scaledRx.toString(),
-          ry: scaledRy.toString(),
-          fill: shape.fill || '#ECB300',
-        },
-        centroid: fragCentroid,
-        bounds: fragBounds,
-        fill: shape.fill,
-        parentId: shape.id,
-        generation,
-      };
-
-      // Calculate powerful initial velocity - dramatic burst effect
-      const explosionVx = Math.cos(finalAngle) * speed * impulse * viewBox.width * 0.5 * massFactor;
-      const explosionVy = Math.sin(finalAngle) * speed * impulse * viewBox.height * 0.8 * massFactor;
-
-      // Spin based on explosion direction and control setting
-      const spinDirection = seededRandom(seed * 5) > 0.5 ? 1 : -1;
-      const spinMagnitude = controls.explosionSpin * 150 * (0.5 + seededRandom(seed * 6) * 0.5);
-      const explosionVr = spinDirection * spinMagnitude * impulse * clamp(1 / massFactor, 0.7, 1.4);
-
-      const staggerBase = Math.max(0, controls.fractureStaggerMsMax);
-      const staggerNoise = seededRandom(seed * 9) * 0.35;
-      const staggerMs = staggerBase > 0
-        ? staggerBase * (0.25 + 0.75 * distFromClick) * (0.9 + staggerNoise)
-        : 0;
-
-      fragments.push({
-        id: fragShape.id,
-        shape: fragShape,
-        originalShape: shape.parentId ? shape : shape, // Keep reference to root shape
-        offsetX: 0,
-        offsetY: 0,
-        rotation: 0,
-        vx: explosionVx,
-        vy: explosionVy,
-        vr: explosionVr,
-        generation,
-        spawnTime: currentTime,
-        spawnDelayMs: staggerMs,
-        isExploding: true,
-      });
-
-      fragIndex++;
-    }
-    cursorY += rowSizes[r];
-  }
-  
-  return fragments;
-};
-
-// ============================================================================
 // PRESET ENGINE
 // ============================================================================
-const createInitialState = (): PresetState => ({
-  clickPoint: null,
-  clickTime: 0,
-  shardFragments: [],
-  shatteredShapeIds: new Set(),
-  isReturning: false,
-  returnStartTime: 0,
-  returnMode: 'grid',
-  reorgPhase: 'none',
-  lastClickTime: 0,
-  lastExplosionTime: 0,
-  cachedGridTargets: null,
-});
+type PresetKey = 'voronoi';
 
 const PRESETS: Record<PresetKey, {
   name: string;
