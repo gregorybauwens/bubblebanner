@@ -198,7 +198,7 @@ const LOCKED_REORG_FLOAT_STRENGTH = 0.9;
 const LOCKED_REORG_FLOAT_DRAG = 0.6;
 const WALL_PADDING = 12;
 
-const DEFAULT_CONTROLS: Controls = {
+export const DEFAULT_CONTROLS: Controls = {
   hoverStrength: 1.2,
   hoverRadius: 0.23,
   clickStrength: 1,
@@ -1616,7 +1616,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           }}
         />
         {SHOW_LOAD_INDICATOR && (
-          <div className="absolute top-2 right-2 rounded-full px-2 py-1 text-[10px] uppercase tracking-wider bg-black/40 text-white">
+          <div className="absolute top-2 right-2 rounded-full px-2 py-1 text-[10px] uppercase tracking-wider bg-black/30 dark:bg-black/40 text-white">
             {isUnderLoad ? 'Perf: Low' : 'Perf: High'}
           </div>
         )}
@@ -1658,7 +1658,7 @@ export const ControlSlider: React.FC<ControlSliderProps> = ({
   formatValue = (v) => v.toFixed(1),
 }) => (
   <div className="grid w-full min-w-0 grid-cols-[auto,1fr,auto] items-center gap-2">
-    <span className="text-neutral-400 text-[10px] whitespace-nowrap">{label}</span>
+    <span className="text-muted-foreground text-[10px] whitespace-nowrap">{label}</span>
     <input
       type="range"
       min={min}
@@ -1668,7 +1668,7 @@ export const ControlSlider: React.FC<ControlSliderProps> = ({
       onChange={(e) => onChange(parseFloat(e.target.value))}
       className="w-full min-w-0 h-1 rounded-full cursor-pointer"
     />
-    <span className="text-right text-neutral-500 text-[10px] tabular-nums whitespace-nowrap">{formatValue(value)}</span>
+    <span className="text-right text-surface-foreground text-[10px] tabular-nums whitespace-nowrap">{formatValue(value)}</span>
   </div>
 );
 

@@ -91,35 +91,35 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
   return (
     <div className="mt-4 p-4 rounded-xl text-xs"
       style={{
-        background: "rgba(15, 15, 15, 0.9)",
+        background: "hsl(var(--panel-bg))",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+        border: "1px solid hsl(var(--panel-border))",
+        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
       }}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-neutral-500">Saved Presets</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Saved Presets</span>
         <button
           onClick={handleSave}
           disabled={atLimit}
           className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors ${
             atLimit
-              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+              ? "bg-surface text-muted-foreground/50 cursor-not-allowed"
+              : "bg-surface hover:bg-surface-hover text-surface-foreground"
           }`}
         >
           Save
         </button>
       </div>
       {atLimit && (
-        <div className="mt-2 text-[10px] text-neutral-500">
+        <div className="mt-2 text-[10px] text-muted-foreground">
           Limit reached (5)
         </div>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {savedPresets.length === 0 && (
-          <div className="text-[10px] text-neutral-500">
+          <div className="text-[10px] text-muted-foreground">
             No presets saved yet.
           </div>
         )}
@@ -140,8 +140,8 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
               title={`Load • ${formatTimestamp(preset.createdAt)}`}
               className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border inline-flex items-center gap-2 ${
                 activeSavedPresetId === preset.id
-                  ? "bg-neutral-700 text-neutral-100 border-neutral-500"
-                  : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-transparent"
+                  ? "bg-surface-hover text-foreground border-border"
+                  : "bg-surface hover:bg-surface-hover text-surface-foreground border-transparent"
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -160,7 +160,7 @@ const SavedPresetsPanel: React.FC<SavedPresetsPanelProps> = ({
             <button
               onClick={() => handleDelete(preset)}
               title="Delete"
-              className="px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-transparent"
+              className="px-2 py-1 rounded-md text-[10px] uppercase tracking-wider transition-colors border bg-surface hover:bg-surface-hover text-surface-foreground border-transparent"
             >
               Delete
             </button>

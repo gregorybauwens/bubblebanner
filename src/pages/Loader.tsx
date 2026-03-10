@@ -57,7 +57,7 @@ export default function Loader() {
   const [liveControls, setLiveControls] = useState<Partial<Controls>>({});
 
   useEffect(() => {
-    document.body.style.background = "#141414";
+    document.body.style.background = "hsl(var(--background))";
     document.body.style.margin = "0";
     document.body.style.overflow = "hidden";
 
@@ -106,7 +106,7 @@ export default function Loader() {
         style={{
           position: "fixed",
           inset: 0,
-          backgroundColor: "#141414",
+          backgroundColor: "hsl(var(--background))",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

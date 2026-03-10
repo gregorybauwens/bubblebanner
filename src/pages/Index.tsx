@@ -1,8 +1,8 @@
-import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, type ControlPanelProps, type Controls } from "@/components/InteractiveHeroBanner";
+import InteractiveHeroBanner, { ControlSlider, DEFAULT_COLOR_STOPS, DEFAULT_CONTROLS, type ControlPanelProps, type Controls } from "@/components/InteractiveHeroBanner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ColorPickerGradient from "@/components/ColorPickerGradient";
-import { ChevronDown, Trash, Save, RotateCcw } from "lucide-react";
+import { ChevronDown, Trash, Save, RotateCcw, Sun, Moon } from "lucide-react";
 import {
   decodePresetFromUrl,
   loadPresetsFromStorage,
@@ -232,8 +232,8 @@ const ControlPanel = ({
           disabled={isColorsLocked}
           className={`h-8 w-8 rounded-lg transition-colors flex items-center justify-center ${
             isColorsLocked
-              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+              ? "bg-surface text-muted-foreground/50 cursor-not-allowed"
+              : "bg-surface hover:bg-surface-hover text-surface-foreground"
           }`}
           title="Reverse colors"
           aria-label="Reverse colors"
@@ -245,8 +245,8 @@ const ControlPanel = ({
           disabled={isSaveDisabled}
           className={`h-8 w-8 rounded-lg transition-colors flex items-center justify-center ${
             isSaveDisabled
-              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+              ? "bg-surface text-muted-foreground/50 cursor-not-allowed"
+              : "bg-surface hover:bg-surface-hover text-surface-foreground"
           }`}
           title="Save preset"
           aria-label="Save preset"
@@ -258,8 +258,8 @@ const ControlPanel = ({
           disabled={isDeleteDisabled}
           className={`h-8 w-8 rounded-lg transition-colors flex items-center justify-center ${
             isDeleteDisabled
-              ? "bg-neutral-800 text-neutral-600 cursor-not-allowed"
-              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
+              ? "bg-surface text-muted-foreground/50 cursor-not-allowed"
+              : "bg-surface hover:bg-surface-hover text-surface-foreground"
           }`}
           title="Delete selected preset"
           aria-label="Delete selected preset"
@@ -267,13 +267,13 @@ const ControlPanel = ({
           <Trash size={14} aria-hidden="true" />
         </button>
       </div>
-      <div className="w-px h-5 bg-neutral-700" />
+      <div className="w-px h-5 bg-border" />
       <button
         onClick={() => {
           clearActiveSavedPreset();
           onReset();
         }}
-        className="h-8 px-3 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-100 text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1.5"
+        className="h-8 px-3 rounded-lg bg-surface-hover hover:bg-surface-active text-foreground text-[10px] uppercase tracking-wider transition-colors flex items-center gap-1.5"
       >
         <RotateCcw size={12} aria-hidden="true" />
         Reset
@@ -282,11 +282,11 @@ const ControlPanel = ({
   <div
     className="mt-0 p-4 rounded-xl text-xs"
     style={{
-      background: "rgba(15, 15, 15, 0.9)",
+      background: "hsl(var(--panel-bg))",
       backdropFilter: "blur(12px)",
       WebkitBackdropFilter: "blur(12px)",
-      border: "1px solid #333333",
-      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+      border: "1px solid hsl(var(--panel-border))",
+      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
     }}
   >
     <button
@@ -294,10 +294,10 @@ const ControlPanel = ({
       onClick={() => setIsMotionOpen((o) => !o)}
       className="w-full flex items-center justify-between mb-2 group"
     >
-      <div className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Motion</div>
+      <div className="py-1 text-[14px] uppercase tracking-wider text-foreground/80">Motion</div>
       <ChevronDown
         size={16}
-        className="text-neutral-500 group-hover:text-neutral-300 transition-all duration-300"
+        className="text-muted-foreground group-hover:text-foreground transition-all duration-300"
         style={{ transform: isMotionOpen ? "rotate(180deg)" : "rotate(0deg)" }}
       />
     </button>
@@ -312,7 +312,7 @@ const ControlPanel = ({
         <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3 pb-1">
           {/* Hover Controls */}
           <div className="w-full min-w-0 flex flex-col gap-1">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Hover</label>
+            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Hover</label>
             <div className="flex flex-col gap-1 items-start justify-start h-fit">
               <ControlSlider label="Strength" value={controls.hoverStrength} onChange={(v) => updateControlAndClearSaved("hoverStrength", v)} min={0} max={3} />
               <ControlSlider label="Radius" value={controls.hoverRadius} onChange={(v) => updateControlAndClearSaved("hoverRadius", v)} min={0.1} max={1} />
@@ -323,7 +323,7 @@ const ControlPanel = ({
 
           {/* Shatter controls */}
           <div className="w-full min-w-0 flex flex-col gap-1">
-            <label className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1">Shatter</label>
+            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Shatter</label>
             <div className="flex flex-col gap-1 items-start justify-start h-fit">
               <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
               <ControlSlider label="Travel" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
@@ -343,7 +343,7 @@ const ControlPanel = ({
           {/* Reorg controls */}
           <div className="w-full min-w-0 flex flex-col gap-1">
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-[10px] uppercase tracking-wider text-neutral-500">Reorg</label>
+              <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">Reorg</label>
               <button
                 onClick={() => {
                   const next = controls.disableReorg < 0.5 ? 1 : 0;
@@ -351,8 +351,8 @@ const ControlPanel = ({
                 }}
                 className={`relative w-8 h-[18px] rounded-full transition-colors ${
                   controls.disableReorg < 0.5
-                    ? "bg-neutral-500"
-                    : "bg-neutral-700"
+                    ? "bg-muted-foreground"
+                    : "bg-muted"
                 }`}
                 title={controls.disableReorg < 0.5 ? "Reorg enabled" : "Reorg disabled"}
                 aria-label="Toggle reorg"
@@ -386,7 +386,20 @@ const ControlPanel = ({
 );
 };
 
+const THEME_STORAGE_KEY = "bubblebanner.theme";
+
 const Index = () => {
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(THEME_STORAGE_KEY) !== "light";
+  });
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    document.documentElement.classList.toggle("light", !next);
+    localStorage.setItem(THEME_STORAGE_KEY, next ? "dark" : "light");
+  };
   const [colorStops, setColorStops] = useState<string[]>(DEFAULT_HAZE_STOPS);
   const [selectedPreset, setSelectedPreset] = useState<string>(DEFAULT_COLOR_PRESET_NAME);
   const [isColorsOpen, setIsColorsOpen] = useState(true);
@@ -530,6 +543,12 @@ const Index = () => {
     setActiveSavedPresetId(null);
     setColorStops(stops);
     setSelectedPreset(name);
+    // Reset motion controls to defaults for every built-in color preset
+    if (bannerUpdateControl) {
+      Object.entries(DEFAULT_CONTROLS).forEach(([key, value]) => {
+        bannerUpdateControl(key as keyof Controls, value as number);
+      });
+    }
   };
 
   const findBuiltInPreset = (name: string) => {
@@ -625,6 +644,14 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-transparent flex flex-col items-center justify-center px-6 pt-16 pb-16">
+      <button
+        onClick={toggleTheme}
+        className="fixed top-4 right-4 z-50 h-9 w-9 rounded-full bg-surface hover:bg-surface-hover text-surface-foreground transition-colors flex items-center justify-center shadow-md border border-border"
+        title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        aria-label="Toggle theme"
+      >
+        {isDark ? <Sun size={16} /> : <Moon size={16} />}
+      </button>
       <div className="w-full max-w-[1312px]">
         <InteractiveHeroBanner
           colorStops={normalizedStops}
@@ -674,11 +701,11 @@ const Index = () => {
         <div
           className="mt-4 p-4 rounded-xl text-xs"
           style={{
-            background: "rgba(15, 15, 15, 0.9)",
+            background: "hsl(var(--panel-bg))",
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
-            border: "1px solid #333333",
-            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+            border: "1px solid hsl(var(--panel-border))",
+            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
           }}
         >
           <div className="flex flex-col gap-3 py-2">
@@ -687,10 +714,10 @@ const Index = () => {
               onClick={() => setIsColorsOpen((o) => !o)}
               className="w-full flex items-center justify-between mb-2 group"
             >
-              <div className="py-1 text-[14px] uppercase tracking-wider text-neutral-300">Colors</div>
+              <div className="py-1 text-[14px] uppercase tracking-wider text-foreground/80">Colors</div>
               <ChevronDown
                 size={16}
-                className="text-neutral-500 group-hover:text-neutral-300 transition-all duration-300"
+                className="text-muted-foreground group-hover:text-foreground transition-all duration-300"
                 style={{ transform: isColorsOpen ? "rotate(180deg)" : "rotate(0deg)" }}
               />
             </button>
@@ -719,13 +746,13 @@ const Index = () => {
                   <PopoverTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center gap-2 rounded-md border border-white/10 bg-transparent px-2 py-1 hover:border-white/30"
+                      className="flex items-center gap-2 rounded-md border border-border bg-transparent px-2 py-1 hover:border-foreground/30"
                     >
                       <span
-                        className="h-6 w-6 rounded border border-white/10"
+                        className="h-6 w-6 rounded border border-border"
                         style={{ backgroundColor: stop }}
                       />
-                      <span className="text-[10px] text-neutral-400">{stop}</span>
+                      <span className="text-[10px] text-muted-foreground">{stop}</span>
                     </button>
                   </PopoverTrigger>
                   <PopoverContent
@@ -739,11 +766,11 @@ const Index = () => {
                       onPointerUp={(event) => event.stopPropagation()}
                     >
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[10px] uppercase tracking-wider text-neutral-500">Picker</span>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Picker</span>
                       <button
                         type="button"
                         onClick={() => setOpenPickerIndex(null)}
-                        className="px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] uppercase tracking-wider transition-colors"
+                        className="px-2 py-1 rounded-md bg-surface hover:bg-surface-hover text-surface-foreground text-[10px] uppercase tracking-wider transition-colors"
                       >
                         Done
                       </button>
@@ -766,7 +793,7 @@ const Index = () => {
               </div>
               {savedPresets.length > 0 && (
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-500">Saved</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Saved</span>
                   <div className="grid gap-2 p-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
                   {savedPresets.map((preset) => {
                     const isSelected = activeSavedPresetId === preset.id;
@@ -779,8 +806,8 @@ const Index = () => {
                         title={preset.name || "Saved preset"}
                         className={`group rounded-lg overflow-hidden transition-all ${
                           isSelected
-                            ? "ring-2 ring-white/60 ring-offset-1 ring-offset-black"
-                            : "ring-1 ring-white/10 hover:ring-white/30"
+                            ? "ring-2 ring-foreground/60 ring-offset-1 ring-offset-background"
+                            : "ring-1 ring-foreground/10 hover:ring-foreground/30"
                         }`}
                       >
                         <div className="flex w-full h-7">
@@ -788,7 +815,7 @@ const Index = () => {
                             <div key={`${preset.id}-s-${i}`} className="flex-1 h-full" style={{ backgroundColor: c }} />
                           ))}
                         </div>
-                        <div className="px-1.5 py-1 bg-neutral-900/80 text-[9px] text-neutral-400 group-hover:text-neutral-200 truncate text-center uppercase tracking-wider transition-colors">
+                        <div className="px-1.5 py-1 bg-card/80 text-[9px] text-muted-foreground group-hover:text-foreground truncate text-center uppercase tracking-wider transition-colors">
                           {preset.name || "Saved"}
                         </div>
                       </button>
@@ -799,7 +826,7 @@ const Index = () => {
               )}
               {colorPresetGroups.map((group) => (
                 <div key={group.name} className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-500">{group.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{group.name}</span>
                   <div className="grid gap-2 p-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
                   {group.presets.map((preset) => {
                     const isSelected = activeSavedPresetId === null && selectedPreset === preset.name;
@@ -813,8 +840,8 @@ const Index = () => {
                         }}
                         className={`group rounded-lg overflow-hidden transition-all ${
                           isSelected
-                            ? "ring-2 ring-white/60 ring-offset-1 ring-offset-black"
-                            : "ring-1 ring-white/10 hover:ring-white/30"
+                            ? "ring-2 ring-foreground/60 ring-offset-1 ring-offset-background"
+                            : "ring-1 ring-foreground/10 hover:ring-foreground/30"
                         }`}
                       >
                         <div className="flex w-full h-7">
@@ -822,7 +849,7 @@ const Index = () => {
                             <div key={`${preset.name}-s-${i}`} className="flex-1 h-full" style={{ backgroundColor: c }} />
                           ))}
                         </div>
-                        <div className="px-1.5 py-1 bg-neutral-900/80 text-[9px] text-neutral-400 group-hover:text-neutral-200 truncate text-center uppercase tracking-wider transition-colors">
+                        <div className="px-1.5 py-1 bg-card/80 text-[9px] text-muted-foreground group-hover:text-foreground truncate text-center uppercase tracking-wider transition-colors">
                           {preset.name}
                         </div>
                       </button>
@@ -840,7 +867,7 @@ const Index = () => {
                   setActiveSavedPresetId(null);
                   bannerReset?.();
                 }}
-                className="px-4 py-2 rounded-full bg-neutral-800/90 border border-white/20 text-neutral-200 text-[11px] uppercase tracking-wider backdrop-blur-sm hover:bg-neutral-700/90 hover:border-white/40 transition-all shadow-lg"
+                className="px-4 py-2 rounded-full bg-surface/90 border border-foreground/20 text-foreground text-[11px] uppercase tracking-wider backdrop-blur-sm hover:bg-surface-hover/90 hover:border-foreground/40 transition-all shadow-lg"
               >
                 Reset to edit colors
               </button>
