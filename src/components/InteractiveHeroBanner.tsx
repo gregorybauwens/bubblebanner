@@ -73,7 +73,7 @@ function elasticOut(t: number): number {
   if (t === 0) return 0;
   if (t === 1) return 1;
   const c4 = (2 * Math.PI) / 3;
-  return Math.pow(2, -10 * t) * Math.sin((t * 5 - 0.5) * c4) + 1;
+  return Math.pow(2, -10 * t) * Math.sin((t * 4 - 0.3) * c4) + 1;
 }
 
 // ============================================================================
@@ -1064,14 +1064,14 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     // Bounce-in: entrance directions for each shape (left → right order)
     const bounceActive = introBounce && !prefersReducedMotion && introBouncePhase !== null && introBouncePhase < 1;
     const BOUNCE_DIRS = [
-      { dx: -500, dy: 600 },
-      { dx: -500,  dy: 500 },
-      { dx: -550,     dy: 400 },
-      { dx: 500,     dy: 600 },
-      { dx: 400,   dy: -500 },
-      { dx: 600,  dy: -500 },
+      { dx: -350, dy: 400 },
+      { dx: -350,  dy: 500 },
+      { dx: -350,     dy: 500 },
+      { dx: -300,     dy: 400 },
+      { dx: -250,   dy: 350 },
+      { dx: -250,  dy: 300 },
     ];
-    const staggerMs = 80;
+    const staggerMs = 70;
     const perShapeDurationMs = introBounceDurationMs - staggerMs * Math.max(0, shapes.length - 1);
     const elapsed = bounceActive ? (introBouncePhase ?? 0) * introBounceDurationMs : 0;
 
@@ -1156,7 +1156,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     : 0;
 
   return (
-    <div className={`relative w-full ${className}`} style={fillViewport ? undefined : { maxWidth: 1312 }}>
+    <div className={`relative w-full overflow-visible ${className}`} style={fillViewport ? undefined : { maxWidth: 1312 }}>
       {/* Main Banner */}
       <div
         ref={containerRef}
