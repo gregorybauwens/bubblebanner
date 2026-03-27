@@ -73,7 +73,7 @@ function elasticOut(t: number): number {
   if (t === 0) return 0;
   if (t === 1) return 1;
   const c4 = (2 * Math.PI) / 3;
-  return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+  return Math.pow(2, -10 * t) * Math.sin((t * 5 - 0.5) * c4) + 1;
 }
 
 // ============================================================================
@@ -561,10 +561,10 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   liveControls,
   introJiggle = false,
   introJiggleDelayMs = 220,
-  introJiggleDurationMs = 750,
+  introJiggleDurationMs = 650,
   introBounce = false,
   introBounceDelayMs = 0,
-  introBounceDurationMs = 1000,
+  introBounceDurationMs = 800,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1064,12 +1064,12 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     // Bounce-in: entrance directions for each shape (left → right order)
     const bounceActive = introBounce && !prefersReducedMotion && introBouncePhase !== null && introBouncePhase < 1;
     const BOUNCE_DIRS = [
-      { dx: -500, dy: -800 },
-      { dx: -5500,  dy: -600 },
-      { dx: 5550,     dy: -600 },
-      { dx: 2500,     dy: 6000 },
-      { dx: 3500,   dy: -600 },
-      { dx: -3800,  dy: -200 },
+      { dx: -500, dy: 600 },
+      { dx: -500,  dy: 500 },
+      { dx: -550,     dy: 400 },
+      { dx: 500,     dy: 600 },
+      { dx: 400,   dy: -500 },
+      { dx: 600,  dy: -500 },
     ];
     const staggerMs = 80;
     const perShapeDurationMs = introBounceDurationMs - staggerMs * Math.max(0, shapes.length - 1);
