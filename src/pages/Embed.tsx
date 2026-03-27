@@ -1,37 +1,14 @@
 import { useEffect } from "react";
-import InteractiveHeroBanner from "@/components/InteractiveHeroBanner";
+import InteractiveHeroBanner, { DEFAULT_CONTROLS } from "@/components/InteractiveHeroBanner";
 
-const AQUA_MIST_STOPS = [
-  "#262248",
-  "#213569",
-  "#31778C",
-  "#5BC0BE",
-  "#9EE493",
-  "#F6F740",
+const HAZE_STOPS = [
+  "#FFD166",
+  "#FF9E64",
+  "#FF6E91",
+  "#D490D4",
+  "#8ABFFF",
+  "#A5F3FC",
 ];
-
-const RAINBOW_CONTROLS = {
-  hoverStrength: 1.2,
-  hoverRadius: 0.2,
-  clickStrength: 1,
-  spring: 1.2,
-  damping: 1.5,
-  timeScale: 1,
-  shardSpread: 0.6,
-  settleTime: 1.9,
-  floatStrength: 0.9,
-  floatDrag: 0.6,
-  floatDurationMs: 200,
-  returnSpring: 1.1,
-  settleDamping: 2.0,
-  explosionForce: 1.8,
-  explosionSpin: 2.2,
-  explosionDurationMs: 1300,
-  fractureStaggerMsMax: 80,
-  wallRestitution: 0.7,
-  wallFriction: 0.2,
-  wallSpinDamping: 0.1,
-};
 
 const Embed = () => {
   useEffect(() => {
@@ -46,8 +23,8 @@ const Embed = () => {
     <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
       <div className="w-full max-w-[1312px] mx-auto">
         <InteractiveHeroBanner
-          colorStops={AQUA_MIST_STOPS}
-          initialControls={RAINBOW_CONTROLS}
+          colorStops={HAZE_STOPS}
+          initialControls={DEFAULT_CONTROLS}
           persistControls={false}
         />
       </div>
