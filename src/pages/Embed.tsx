@@ -32,9 +32,9 @@ const Embed = () => {
           colorStops={GRAPE_MIST_III_STOPS}
           initialControls={GRAPE_MIST_III_CONTROLS}
           persistControls={false}
-          introJiggle
-          introJiggleDelayMs={180}
-          introJiggleDurationMs={820}
+          introBounce
+          introBounceDelayMs={0}
+          introBounceDurationMs={1000}
         />
       </div>
     </div>

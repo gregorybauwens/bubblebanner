@@ -69,6 +69,13 @@ const MAX_TOTAL_CRACK_LINES = 180;
 const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 
+function elasticOut(t: number): number {
+  if (t === 0) return 0;
+  if (t === 1) return 1;
+  const c4 = (2 * Math.PI) / 3;
+  return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+}
+
 // ============================================================================
 // SVG PARSER
 // ============================================================================
@@ -535,6 +542,9 @@ interface InteractiveHeroBannerProps {
   introJiggle?: boolean;
   introJiggleDelayMs?: number;
   introJiggleDurationMs?: number;
+  introBounce?: boolean;
+  introBounceDelayMs?: number;
+  introBounceDurationMs?: number;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
@@ -552,6 +562,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   introJiggle = false,
   introJiggleDelayMs = 220,
   introJiggleDurationMs = 750,
+  introBounce = false,
+  introBounceDelayMs = 0,
+  introBounceDurationMs = 1000,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -616,6 +629,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [isUnderLoad, setIsUnderLoad] = useState(false);
   const [introJigglePhase, setIntroJigglePhase] = useState(1);
+  const [introBouncePhase, setIntroBouncePhase] = useState<number | null>(null);
+  const introBounceRanRef = useRef(false);
   
   const lastTimeRef = useRef<number>(0);
   const animationRef = useRef<number>();
@@ -678,6 +693,34 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       if (rafId !== undefined) cancelAnimationFrame(rafId);
     };
   }, [introJiggle, introJiggleDelayMs, introJiggleDurationMs, prefersReducedMotion]);
+
+  // Bounce-in entrance animation
+  useEffect(() => {
+    if (!introBounce || prefersReducedMotion || introBounceRanRef.current) return;
+    introBounceRanRef.current = true;
+
+    let rafId: number | undefined;
+    let timerId: number | undefined;
+    let startTime = 0;
+
+    timerId = window.setTimeout(() => {
+      setIntroBouncePhase(0);
+      startTime = performance.now();
+      const tick = (now: number) => {
+        const t = clamp((now - startTime) / introBounceDurationMs, 0, 1);
+        setIntroBouncePhase(t);
+        if (t < 1) {
+          rafId = requestAnimationFrame(tick);
+        }
+      };
+      rafId = requestAnimationFrame(tick);
+    }, Math.max(0, introBounceDelayMs));
+
+    return () => {
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+    };
+  }, [introBounce, introBounceDelayMs, introBounceDurationMs, prefersReducedMotion]);
 
   // Live controls — merge incoming partial controls into state each time they change
   useEffect(() => {
@@ -1017,8 +1060,36 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     const jiggleActive = introJiggle && !prefersReducedMotion && introJigglePhase < 1;
     const wiggleEnvelope = jiggleActive ? Math.max(0, 1 - introJigglePhase) : 0;
     const wiggleWaveX = jiggleActive ? Math.sin(introJigglePhase * Math.PI * 6) : 0;
+
+    // Bounce-in: entrance directions for each shape (left → right order)
+    const bounceActive = introBounce && !prefersReducedMotion && introBouncePhase !== null && introBouncePhase < 1;
+    const BOUNCE_DIRS = [
+      { dx: -500, dy: -800 },
+      { dx: -5500,  dy: -600 },
+      { dx: 5550,     dy: -600 },
+      { dx: 2500,     dy: 6000 },
+      { dx: 3500,   dy: -600 },
+      { dx: -3800,  dy: -200 },
+    ];
+    const staggerMs = 80;
+    const perShapeDurationMs = introBounceDurationMs - staggerMs * Math.max(0, shapes.length - 1);
+    const elapsed = bounceActive ? (introBouncePhase ?? 0) * introBounceDurationMs : 0;
+
     shapes.forEach((shape, index) => {
       const transform = preset.shapeTransform(shape, presetState, pointer, effectiveControls, viewBox);
+
+      if (bounceActive) {
+        const dir = BOUNCE_DIRS[Math.min(index, BOUNCE_DIRS.length - 1)];
+        const localT = clamp((elapsed - index * staggerMs) / perShapeDurationMs, 0, 1);
+        const eased = elasticOut(localT);
+        transforms.set(shape.id, {
+          ...transform,
+          x: transform.x + dir.dx * (1 - eased),
+          y: transform.y + dir.dy * (1 - eased),
+        });
+        return;
+      }
+
       if (!jiggleActive) {
         transforms.set(shape.id, transform);
         return;
@@ -1053,6 +1124,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     viewBox,
     introJiggle,
     introJigglePhase,
+    introBounce,
+    introBouncePhase,
+    introBounceDurationMs,
     prefersReducedMotion,
   ]);
 
