@@ -532,6 +532,9 @@ interface InteractiveHeroBannerProps {
   triggerExplode?: boolean;
   fillViewport?: boolean;
   liveControls?: Partial<Controls>;
+  introJiggle?: boolean;
+  introJiggleDelayMs?: number;
+  introJiggleDurationMs?: number;
 }
 
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
@@ -546,6 +549,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   triggerExplode,
   fillViewport = false,
   liveControls,
+  introJiggle = false,
+  introJiggleDelayMs = 220,
+  introJiggleDurationMs = 750,
 }) => {
   const prefersReducedMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -554,6 +560,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const clickBurstRef = useRef<number[]>([]);
   const hasInteractedRef = useRef(false);
   const resetInFlightRef = useRef(false);
+  const introJiggleRanRef = useRef(false);
   
   // Parse SVG
   const { shapes, viewBox } = useMemo(() => {
@@ -608,6 +615,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const [presetState, setPresetState] = useState<PresetState>(createInitialState());
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [isUnderLoad, setIsUnderLoad] = useState(false);
+  const [introJigglePhase, setIntroJigglePhase] = useState(1);
   
   const lastTimeRef = useRef<number>(0);
   const animationRef = useRef<number>();
@@ -642,6 +650,34 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       }, i * 60);
     });
   }, [triggerExplode]);
+
+  // Optional one-shot "hint" animation on mount for embeds/marketing surfaces.
+  useEffect(() => {
+    if (!introJiggle || prefersReducedMotion || introJiggleRanRef.current) return;
+    introJiggleRanRef.current = true;
+
+    let rafId: number | undefined;
+    let timerId: number | undefined;
+    let startTime = 0;
+
+    timerId = window.setTimeout(() => {
+      setIntroJigglePhase(0);
+      startTime = performance.now();
+      const tick = (now: number) => {
+        const t = clamp((now - startTime) / introJiggleDurationMs, 0, 1);
+        setIntroJigglePhase(t);
+        if (t < 1) {
+          rafId = requestAnimationFrame(tick);
+        }
+      };
+      rafId = requestAnimationFrame(tick);
+    }, Math.max(0, introJiggleDelayMs));
+
+    return () => {
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+    };
+  }, [introJiggle, introJiggleDelayMs, introJiggleDurationMs, prefersReducedMotion]);
 
   // Live controls — merge incoming partial controls into state each time they change
   useEffect(() => {
@@ -978,12 +1014,47 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const shapeTransforms = useMemo(() => {
     const preset = PRESETS[activePreset];
     const transforms = new Map<string, ShapeTransform>();
-    shapes.forEach(shape => {
+    const jiggleActive = introJiggle && !prefersReducedMotion && introJigglePhase < 1;
+    const wiggleEnvelope = jiggleActive ? Math.max(0, 1 - introJigglePhase) : 0;
+    const wiggleWaveX = jiggleActive ? Math.sin(introJigglePhase * Math.PI * 6) : 0;
+    shapes.forEach((shape, index) => {
       const transform = preset.shapeTransform(shape, presetState, pointer, effectiveControls, viewBox);
-      transforms.set(shape.id, transform);
+      if (!jiggleActive) {
+        transforms.set(shape.id, transform);
+        return;
+      }
+
+      const count = Math.max(1, shapes.length - 1);
+      const spreadWeight = 0.7 + (index / count) * 0.35;
+      const direction = index % 2 === 0 ? 1 : -1;
+      const jiggleX = wiggleWaveX * 6 * wiggleEnvelope * direction * spreadWeight;
+      const jiggleY = Math.sin(introJigglePhase * Math.PI * 4 + index * 0.6) * 2 * wiggleEnvelope;
+      const constrained = constrainToBounds(
+        shape,
+        transform.x + jiggleX,
+        transform.y + jiggleY,
+        transform.scale,
+        viewBox
+      );
+
+      transforms.set(shape.id, {
+        ...transform,
+        x: constrained.x,
+        y: constrained.y,
+      });
     });
     return transforms;
-  }, [activePreset, presetState, pointer, effectiveControls, shapes, viewBox]);
+  }, [
+    activePreset,
+    presetState,
+    pointer,
+    effectiveControls,
+    shapes,
+    viewBox,
+    introJiggle,
+    introJigglePhase,
+    prefersReducedMotion,
+  ]);
 
   // Control updater
   const updateControl = (key: keyof Controls, value: number) => {

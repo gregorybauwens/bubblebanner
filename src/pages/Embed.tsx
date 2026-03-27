@@ -7,13 +7,13 @@ const GRAPE_MIST_III_CONTROLS = {
   hoverRadius: 0.2,
 };
 
-const GRAPE_BLOOM_STOPS = [
-  "#788DCF",
-  "#9773D4",
+const GRAPE_MIST_III_STOPS = [
+  "#FAA16E",
+  "#FAC26E",
+  "#65C1CE",
   "#C76CDB",
-  "#CE558B",
-  "#D65A4D",
-  "#DB954B",
+  "#838383",
+  "#E0DEDE",
 ];
 
 const Embed = () => {
@@ -29,9 +29,12 @@ const Embed = () => {
     <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
       <div className="w-full max-w-[1312px] mx-auto">
         <InteractiveHeroBanner
-          colorStops={GRAPE_BLOOM_STOPS}
+          colorStops={GRAPE_MIST_III_STOPS}
           initialControls={GRAPE_MIST_III_CONTROLS}
           persistControls={false}
+          introJiggle
+          introJiggleDelayMs={180}
+          introJiggleDurationMs={820}
         />
       </div>
     </div>
