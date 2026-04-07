@@ -34,7 +34,7 @@ const Embed = () => {
           persistControls={false}
           introBounce
           introBounceDelayMs={0}
-          introBounceDurationMs={1000}
+          introBounceDurationMs={920}
         />
       </div>
     </div>

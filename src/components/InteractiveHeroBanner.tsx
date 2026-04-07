@@ -72,8 +72,10 @@ const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 function elasticOut(t: number): number {
   if (t === 0) return 0;
   if (t === 1) return 1;
-  const c4 = (2 * Math.PI) / 3;
-  return Math.pow(2, -10 * t) * Math.sin((t * 4 - 0.3) * c4) + 1;
+  const period = 0.5;
+  const decay = 7;
+  const s = period / 4;
+  return Math.pow(2, -decay * t) * Math.sin(((t - s) * (2 * Math.PI)) / period) + 1;
 }
 
 // ============================================================================
@@ -1064,14 +1066,14 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     // Bounce-in: entrance directions for each shape (left → right order)
     const bounceActive = introBounce && !prefersReducedMotion && introBouncePhase !== null && introBouncePhase < 1;
     const BOUNCE_DIRS = [
-      { dx: -350, dy: 400 },
-      { dx: -350,  dy: 500 },
-      { dx: -350,     dy: 500 },
-      { dx: -300,     dy: 400 },
-      { dx: -250,   dy: 350 },
-      { dx: -250,  dy: 300 },
+      { dx: 0, dy: 150 },
+      { dx: 0,  dy: 150 },
+      { dx: 0,     dy: 150 },
+      { dx: 0,     dy: 150 },
+      { dx: 0,   dy: 150 },
+      { dx: 0,  dy: 150 },
     ];
-    const staggerMs = 70;
+    const staggerMs = 65;
     const perShapeDurationMs = introBounceDurationMs - staggerMs * Math.max(0, shapes.length - 1);
     const elapsed = bounceActive ? (introBouncePhase ?? 0) * introBounceDurationMs : 0;
 
