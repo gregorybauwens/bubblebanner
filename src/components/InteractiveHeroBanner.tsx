@@ -1066,14 +1066,14 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     // Bounce-in: entrance directions for each shape (left → right order)
     const bounceActive = introBounce && !prefersReducedMotion && introBouncePhase !== null && introBouncePhase < 1;
     const BOUNCE_DIRS = [
-      { dx: 0, dy: 150 },
-      { dx: 0,  dy: 150 },
-      { dx: 0,     dy: 150 },
-      { dx: 0,     dy: 150 },
-      { dx: 0,   dy: 150 },
-      { dx: 0,  dy: 150 },
+      { dx: 0, dy: 170 },
+      { dx: 0,  dy: 170 },
+      { dx: 0,     dy: 170 },
+      { dx: 0,     dy: 170 },
+      { dx: 0,   dy: 170 },
+      { dx: 0,  dy: 170 },
     ];
-    const staggerMs = 65;
+    const staggerMs = 75;
     const perShapeDurationMs = introBounceDurationMs - staggerMs * Math.max(0, shapes.length - 1);
     const elapsed = bounceActive ? (introBouncePhase ?? 0) * introBounceDurationMs : 0;
 
