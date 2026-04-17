@@ -26,8 +26,8 @@ const Embed = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-transparent flex items-center justify-center p-0">
-      <div className="w-full max-w-[1312px] mx-auto">
+    <div className="min-h-screen bg-transparent flex items-center justify-center overflow-visible">
+      <div className="w-full max-w-[1312px] mx-auto overflow-visible">
         <InteractiveHeroBanner
           colorStops={GRAPE_MIST_III_STOPS}
           initialControls={GRAPE_MIST_III_CONTROLS}

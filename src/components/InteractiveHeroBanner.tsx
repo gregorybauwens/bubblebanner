@@ -69,14 +69,14 @@ const MAX_TOTAL_CRACK_LINES = 180;
 const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 
-function elasticOut(t: number): number {
-  if (t === 0) return 0;
-  if (t === 1) return 1;
-  const period = 0.5;
-  const decay = 7;
-  const s = period / 4;
-  return Math.pow(2, -decay * t) * Math.sin(((t - s) * (2 * Math.PI)) / period) + 1;
-}
+// Intro entrance — shapes rise from below into place with a single soft overshoot.
+const INTRO_Y_OFFSET = 140;
+const INTRO_STAGGER_MS = 50;
+const INTRO_SPRING = { type: 'spring' as const, stiffness: 140, damping: 30, mass: 1.5 };
+// Smaller shapes get a lighter mass so their settle tail is shorter and reads as firm.
+const INTRO_MASS_MAX = 1.5; // largest shape — matches current feel
+const INTRO_MASS_MIN = 0.9; // smallest shape — crisper settle
+const INTRO_MASS_WIDTH_REF = 200; // widths at or above this count as "big"
 
 // ============================================================================
 // SVG PARSER
@@ -631,9 +631,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [isUnderLoad, setIsUnderLoad] = useState(false);
   const [introJigglePhase, setIntroJigglePhase] = useState(1);
-  const [introBouncePhase, setIntroBouncePhase] = useState<number | null>(null);
-  const introBounceRanRef = useRef(false);
-  
+  const [hasEntered, setHasEntered] = useState(false);
+
+
   const lastTimeRef = useRef<number>(0);
   const animationRef = useRef<number>();
   const avgDtRef = useRef<number>(0.016);
@@ -696,33 +696,15 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     };
   }, [introJiggle, introJiggleDelayMs, introJiggleDurationMs, prefersReducedMotion]);
 
-  // Bounce-in entrance animation
+  // Mark the entrance as done immediately when the banner should not animate in.
+  // When `introBounce` is active, `hasEntered` flips via `onAnimationComplete` on the
+  // last shape, which swaps each <motion.g>'s transition from the entrance spring to
+  // the normal hover spring.
   useEffect(() => {
-    if (!introBounce || prefersReducedMotion || introBounceRanRef.current) return;
-    introBounceRanRef.current = true;
-
-    let rafId: number | undefined;
-    let timerId: number | undefined;
-    let startTime = 0;
-
-    timerId = window.setTimeout(() => {
-      setIntroBouncePhase(0);
-      startTime = performance.now();
-      const tick = (now: number) => {
-        const t = clamp((now - startTime) / introBounceDurationMs, 0, 1);
-        setIntroBouncePhase(t);
-        if (t < 1) {
-          rafId = requestAnimationFrame(tick);
-        }
-      };
-      rafId = requestAnimationFrame(tick);
-    }, Math.max(0, introBounceDelayMs));
-
-    return () => {
-      if (timerId !== undefined) window.clearTimeout(timerId);
-      if (rafId !== undefined) cancelAnimationFrame(rafId);
-    };
-  }, [introBounce, introBounceDelayMs, introBounceDurationMs, prefersReducedMotion]);
+    if (!introBounce || prefersReducedMotion) {
+      setHasEntered(true);
+    }
+  }, [introBounce, prefersReducedMotion]);
 
   // Live controls — merge incoming partial controls into state each time they change
   useEffect(() => {
@@ -1063,34 +1045,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     const wiggleEnvelope = jiggleActive ? Math.max(0, 1 - introJigglePhase) : 0;
     const wiggleWaveX = jiggleActive ? Math.sin(introJigglePhase * Math.PI * 6) : 0;
 
-    // Bounce-in: entrance directions for each shape (left → right order)
-    const bounceActive = introBounce && !prefersReducedMotion && introBouncePhase !== null && introBouncePhase < 1;
-    const BOUNCE_DIRS = [
-      { dx: 0, dy: 170 },
-      { dx: 0,  dy: 170 },
-      { dx: 0,     dy: 170 },
-      { dx: 0,     dy: 170 },
-      { dx: 0,   dy: 170 },
-      { dx: 0,  dy: 170 },
-    ];
-    const staggerMs = 75;
-    const perShapeDurationMs = introBounceDurationMs - staggerMs * Math.max(0, shapes.length - 1);
-    const elapsed = bounceActive ? (introBouncePhase ?? 0) * introBounceDurationMs : 0;
-
     shapes.forEach((shape, index) => {
       const transform = preset.shapeTransform(shape, presetState, pointer, effectiveControls, viewBox);
-
-      if (bounceActive) {
-        const dir = BOUNCE_DIRS[Math.min(index, BOUNCE_DIRS.length - 1)];
-        const localT = clamp((elapsed - index * staggerMs) / perShapeDurationMs, 0, 1);
-        const eased = elasticOut(localT);
-        transforms.set(shape.id, {
-          ...transform,
-          x: transform.x + dir.dx * (1 - eased),
-          y: transform.y + dir.dy * (1 - eased),
-        });
-        return;
-      }
 
       if (!jiggleActive) {
         transforms.set(shape.id, transform);
@@ -1126,9 +1082,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     viewBox,
     introJiggle,
     introJigglePhase,
-    introBounce,
-    introBouncePhase,
-    introBounceDurationMs,
     prefersReducedMotion,
   ]);
 
@@ -1158,11 +1111,14 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     : 0;
 
   return (
-    <div className={`relative w-full overflow-visible ${className}`} style={fillViewport ? undefined : { maxWidth: 1312 }}>
+    <div
+      className={`relative w-full overflow-visible ${className}`}
+      style={fillViewport ? undefined : { maxWidth: '100%' }}
+    >
       {/* Main Banner */}
       <div
         ref={containerRef}
-        className="relative w-full overflow-visible rounded-2xl"
+        className="relative w-full overflow-visible"
         style={{
           ...(fillViewport ? { height: '100vh' } : { aspectRatio: `${viewBox.width} / ${viewBox.height}` }),
           background: 'transparent',
@@ -1178,6 +1134,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           height="100%"
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
           preserveAspectRatio={fillViewport ? "none" : "xMidYMid meet"}
+          overflow="visible"
           style={{ display: 'block', willChange: 'transform', overflow: 'visible' }}
         >
           {/* Filters for effects */}
@@ -1196,7 +1153,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           </defs>
 
           {/* Render shapes - for voronoi, hide shattered shapes unless resetting */}
-          {shapes.map((shape) => {
+          {shapes.map((shape, index) => {
             // For voronoi preset, hide shapes that have been shattered into fragments
             if (activePreset === 'voronoi' && presetState.shatteredShapeIds.has(shape.id) && presetState.returnMode !== 'original') {
               return null;
@@ -1205,11 +1162,28 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             const transform = shapeTransforms.get(shape.id) || { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, filterStrength: 0, brightness: 1 };
             const centerX = shape.centroid.x;
             const centerY = shape.centroid.y;
-            
+
+            const isEntering = introBounce && !prefersReducedMotion && !hasEntered;
+            const entranceDelaySec =
+              (introBounceDelayMs + index * INTRO_STAGGER_MS) / 1000;
+            const widthNorm = Math.min(1, shape.bounds.width / INTRO_MASS_WIDTH_REF);
+            const entranceMass = INTRO_MASS_MIN + (INTRO_MASS_MAX - INTRO_MASS_MIN) * widthNorm;
+            const isLastShape = index === shapes.length - 1;
+
             return (
               <motion.g
                 key={shape.id}
-                initial={false}
+                initial={
+                  isEntering
+                    ? {
+                        x: transform.x,
+                        y: transform.y + INTRO_Y_OFFSET,
+                        scale: transform.scale,
+                        rotate: transform.rotate,
+                        opacity: 0,
+                      }
+                    : false
+                }
                 animate={{
                   x: transform.x,
                   y: transform.y,
@@ -1217,10 +1191,19 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                   rotate: transform.rotate,
                   opacity: transform.opacity * (presetState.returnMode === 'original' ? resetProgress : 1),
                 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 300 * controls.spring,
-                  damping: 30 * controls.damping,
+                transition={
+                  hasEntered
+                    ? {
+                        type: 'spring',
+                        stiffness: 300 * controls.spring,
+                        damping: 30 * controls.damping,
+                      }
+                    : { ...INTRO_SPRING, mass: entranceMass, delay: entranceDelaySec }
+                }
+                onAnimationComplete={() => {
+                  if (!hasEntered && isLastShape) {
+                    setHasEntered(true);
+                  }
                 }}
                 style={{
                   transformOrigin: `${centerX}px ${centerY}px`,
@@ -1267,13 +1250,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
           })}
         </svg>
 
-        {/* Subtle gradient overlay for depth */}
-        <div 
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: 'radial-gradient(ellipse at 30% 40%, transparent 0%, rgba(0,0,0,0.02) 100%)',
-          }}
-        />
         {SHOW_LOAD_INDICATOR && (
           <div className="absolute top-2 right-2 rounded-full px-2 py-1 text-[10px] uppercase tracking-wider bg-black/30 dark:bg-black/40 text-white">
             {isUnderLoad ? 'Perf: Low' : 'Perf: High'}
