@@ -71,7 +71,7 @@ const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 
 // Intro entrance — shapes rise from below into place with a single soft overshoot.
 const INTRO_Y_OFFSET = 140;
-const INTRO_STAGGER_MS = 50;
+const INTRO_STAGGER_MS = 180;
 const INTRO_SPRING = { type: 'spring' as const, stiffness: 140, damping: 30, mass: 1.5 };
 // Smaller shapes get a lighter mass so their settle tail is shorter and reads as firm.
 const INTRO_MASS_MAX = 1.5; // largest shape — matches current feel
