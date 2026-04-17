@@ -69,14 +69,24 @@ const MAX_TOTAL_CRACK_LINES = 180;
 const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 
-// Intro entrance — shapes rise from below into place with a single soft overshoot.
+// Intro entrance — Editorial glide. Overdamped spring + tight rest thresholds so
+// shapes arrive clean with no subpixel tail. Opacity fades up on its own tween so
+// the final moments are pure position settling.
 const INTRO_Y_OFFSET = 140;
-const INTRO_STAGGER_MS = 180;
-const INTRO_SPRING = { type: 'spring' as const, stiffness: 140, damping: 30, mass: 1.5 };
-// Smaller shapes get a lighter mass so their settle tail is shorter and reads as firm.
-const INTRO_MASS_MAX = 1.5; // largest shape — matches current feel
-const INTRO_MASS_MIN = 0.9; // smallest shape — crisper settle
-const INTRO_MASS_WIDTH_REF = 200; // widths at or above this count as "big"
+const INTRO_STAGGER_MS = 90;
+const INTRO_SPRING = {
+  type: 'spring' as const,
+  stiffness: 85,
+  damping: 32,
+  mass: 1.5,
+  restSpeed: 0.5,
+  restDelta: 0.5,
+};
+const INTRO_OPACITY_TWEEN = {
+  type: 'tween' as const,
+  duration: 0.45,
+  ease: [0.22, 1, 0.36, 1] as const,
+};
 
 // ============================================================================
 // SVG PARSER
@@ -1037,16 +1047,19 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     };
   }, [activePreset, controls.timeScale, effectiveControls, shapes, prefersReducedMotion, isPaused, isUnderLoad, viewBox]);
 
-  // Calculate transforms - memoized to avoid extra state update cycle
+  // Calculate transforms - memoized to avoid extra state update cycle.
+  // During the intro entrance we feed the preset a null pointer so hover parallax
+  // does not move the entrance target mid-spring, which would read as jitter.
   const shapeTransforms = useMemo(() => {
     const preset = PRESETS[activePreset];
     const transforms = new Map<string, ShapeTransform>();
     const jiggleActive = introJiggle && !prefersReducedMotion && introJigglePhase < 1;
     const wiggleEnvelope = jiggleActive ? Math.max(0, 1 - introJigglePhase) : 0;
     const wiggleWaveX = jiggleActive ? Math.sin(introJigglePhase * Math.PI * 6) : 0;
+    const transformPointer = hasEntered ? pointer : null;
 
     shapes.forEach((shape, index) => {
-      const transform = preset.shapeTransform(shape, presetState, pointer, effectiveControls, viewBox);
+      const transform = preset.shapeTransform(shape, presetState, transformPointer, effectiveControls, viewBox);
 
       if (!jiggleActive) {
         transforms.set(shape.id, transform);
@@ -1083,6 +1096,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     introJiggle,
     introJigglePhase,
     prefersReducedMotion,
+    hasEntered,
   ]);
 
   // Control updater
@@ -1166,8 +1180,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
             const isEntering = introBounce && !prefersReducedMotion && !hasEntered;
             const entranceDelaySec =
               (introBounceDelayMs + index * INTRO_STAGGER_MS) / 1000;
-            const widthNorm = Math.min(1, shape.bounds.width / INTRO_MASS_WIDTH_REF);
-            const entranceMass = INTRO_MASS_MIN + (INTRO_MASS_MAX - INTRO_MASS_MIN) * widthNorm;
             const isLastShape = index === shapes.length - 1;
 
             return (
@@ -1198,7 +1210,11 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                         stiffness: 300 * controls.spring,
                         damping: 30 * controls.damping,
                       }
-                    : { ...INTRO_SPRING, mass: entranceMass, delay: entranceDelaySec }
+                    : {
+                        ...INTRO_SPRING,
+                        delay: entranceDelaySec,
+                        opacity: { ...INTRO_OPACITY_TWEEN, delay: entranceDelaySec },
+                      }
                 }
                 onAnimationComplete={() => {
                   if (!hasEntered && isLastShape) {
