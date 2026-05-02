@@ -650,7 +650,7 @@ const Index = () => {
       >
         {isDark ? <Sun size={16} /> : <Moon size={16} />}
       </button>
-      <div className="w-full max-w-[1312px]">
+      <div className="w-full max-w-[1440px]">
         <InteractiveHeroBanner
           colorStops={normalizedStops}
           persistControls={false}

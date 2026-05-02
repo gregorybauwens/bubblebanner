@@ -56,13 +56,13 @@ const ShapeElement = memo(({ html }: { html: string }) => (
 // ============================================================================
 // PASTE YOUR SVG MARKUP HERE (or pass via svgMarkup prop)
 // ============================================================================
-const STARTER_SVG = `<svg width="1312" height="380" viewBox="0 0 1312 380" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="0"    y="0" width="608" height="380" rx="190" fill="#FFD166"/>
-<rect x="622"  y="0" width="290" height="380" rx="145" fill="#FF9E64"/>
-<rect x="926"  y="0" width="164" height="380" rx="82"  fill="#FF6E91"/>
-<rect x="1104" y="0" width="94"  height="380" rx="47"  fill="#D490D4"/>
-<rect x="1212" y="0" width="52"  height="380" rx="26"  fill="#8ABFFF"/>
-<rect x="1278" y="0" width="34"  height="380" rx="17"  fill="#A5F3FC"/>
+const STARTER_SVG = `<svg width="1440" height="380" viewBox="0 0 1440 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="0"    y="0" width="710" height="380" rx="190"   fill="#FFD166"/>
+<rect x="730"  y="0" width="345" height="380" rx="172.5" fill="#FF9E64"/>
+<rect x="1095" y="0" width="152" height="380" rx="76"    fill="#FF6E91"/>
+<rect x="1267" y="0" width="76"  height="380" rx="38"    fill="#D490D4"/>
+<rect x="1363" y="0" width="38"  height="380" rx="19"    fill="#8ABFFF"/>
+<rect x="1421" y="0" width="19"  height="380" rx="9.5"   fill="#A5F3FC"/>
 </svg>`;
 
 const MAX_TOTAL_CRACK_LINES = 180;
@@ -97,12 +97,12 @@ const parseSVG = (svgMarkup: string): { shapes: Shape[]; viewBox: ViewBox } => {
   const svg = doc.querySelector('svg');
   
   if (!svg) {
-    return { shapes: [], viewBox: { x: 0, y: 0, width: 1312, height: 380 } };
+    return { shapes: [], viewBox: { x: 0, y: 0, width: 1440, height: 380 } };
   }
 
   // Parse viewBox
   const viewBoxAttr = svg.getAttribute('viewBox');
-  let viewBox: ViewBox = { x: 0, y: 0, width: 1312, height: 380 };
+  let viewBox: ViewBox = { x: 0, y: 0, width: 1440, height: 380 };
   if (viewBoxAttr) {
     const parts = viewBoxAttr.split(/\s+/).map(Number);
     if (parts.length === 4) {
