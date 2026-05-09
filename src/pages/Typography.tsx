@@ -282,8 +282,8 @@ const THEME_STORAGE_KEY = "bubblebanner.theme";
 
 const Typography = () => {
   const [isDark, setIsDark] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem(THEME_STORAGE_KEY) !== "light";
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(THEME_STORAGE_KEY) === "dark";
   });
   const toggleTheme = () => {
     const next = !isDark;
