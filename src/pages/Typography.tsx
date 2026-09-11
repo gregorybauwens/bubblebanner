@@ -502,7 +502,6 @@ const Typography = () => {
           className="mt-4 p-4 rounded-xl text-xs"
           style={{ background: "hsl(var(--panel-bg))", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid hsl(var(--panel-border))", boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)" }}
         >
-          <div className="flex flex-col gap-3 py-2">
             <button type="button" onClick={() => setIsColorsOpen((o) => !o)} className="w-full flex items-center justify-between mb-2 group">
               <div className="py-1 text-[14px] uppercase tracking-wider text-foreground/80">Colors</div>
               <ChevronDown size={16} className="text-muted-foreground group-hover:text-foreground transition-all duration-300" style={{ transform: isColorsOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
@@ -575,7 +574,6 @@ const Typography = () => {
                 </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
     </div>

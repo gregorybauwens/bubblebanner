@@ -706,7 +706,6 @@ const Index = () => {
             boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
           }}
         >
-          <div className="flex flex-col gap-3 py-2">
             <button
               type="button"
               onClick={() => setIsColorsOpen((o) => !o)}
@@ -874,7 +873,6 @@ const Index = () => {
             </div>
             </div>
             </div>
-        </div>
       </div>
     </div>
     </div>
