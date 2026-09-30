@@ -1,12 +1,6 @@
 import { useEffect } from "react";
 import InteractiveHeroBanner, { DEFAULT_CONTROLS } from "@/components/InteractiveHeroBanner";
 
-const GRAPE_MIST_III_CONTROLS = {
-  ...DEFAULT_CONTROLS,
-  hoverStrength: 1.6,
-  hoverRadius: 0.2,
-};
-
 const GRAPE_MIST_III_STOPS = [
   "#FAA16E",
   "#FAC26E",
@@ -30,7 +24,7 @@ const Embed = () => {
       <div className="w-full max-w-[1440px] mx-auto overflow-visible">
         <InteractiveHeroBanner
           colorStops={GRAPE_MIST_III_STOPS}
-          initialControls={GRAPE_MIST_III_CONTROLS}
+          initialControls={DEFAULT_CONTROLS}
           persistControls={false}
           introBounce
           introBounceDelayMs={0}

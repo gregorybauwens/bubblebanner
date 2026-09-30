@@ -1,5 +1,6 @@
 import InteractiveTypeBanner, { type ControlPanelProps } from "@/components/InteractiveTypeBanner";
-import { ControlSlider, DEFAULT_CONTROLS } from "@/components/InteractiveHeroBanner";
+import { ControlSlider } from "@/components/InteractiveHeroBanner";
+import { DEFAULT_CONTROLS } from "@/lib/bannerPhysics";
 import type { Controls } from "@/lib/bannerPhysics";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEffect, useMemo, useRef, useState } from "react";

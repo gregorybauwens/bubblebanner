@@ -19,6 +19,7 @@ const LOADER_CONTROLS: Partial<Controls> = {
   spring: 1.2,
   damping: 1.5,
   timeScale: 0.5,
+  gravity: 0,
   shardSpread: 1.0,
   settleTime: 999,
   floatStrength: 1.2,

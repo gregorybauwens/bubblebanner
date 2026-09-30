@@ -1,16 +1,13 @@
 /**
  * InteractiveHeroBanner
- * 
- * A production-ready interactive SVG banner with 4 physics-based presets.
- * 
+ *
+ * An interactive SVG banner. Click a shape to shatter it into Voronoi pieces
+ * that tumble under gravity; grab and fling pieces, click them to break them
+ * further, and press Reset (or wait) to watch them fly back together.
+ *
  * HOW TO USE:
  * 1. Replace STARTER_SVG below with your SVG markup, OR
  * 2. Pass svgMarkup prop: <InteractiveHeroBanner svgMarkup={yourSvgString} />
- * 
- * HOW TO ADD MORE PRESETS:
- * 1. Add new preset key to PresetKey type
- * 2. Add preset config to PRESETS object with initClick, update, shapeTransform functions
- * 3. Add preset-specific controls to the control panel
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
@@ -18,35 +15,31 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   type Shape,
   type ViewBox,
-  type ShardFragment,
-  type PresetState,
-  type ShapeTransform,
   type Controls,
   DEFAULT_COLOR_STOPS,
-  DEFAULT_CONTROLS,
-  lerp,
+  DEFAULT_CONTROLS as BASE_DEFAULT_CONTROLS,
   clamp,
-  smoothstep,
   distance,
-  seededRandom,
-  getPaletteColor,
   applyFillToShape,
   constrainToBounds,
-  bounceWithinBounds,
-  createFragmentsFromShape,
-  createInitialState,
-  LOCKED_REORG_FLOAT_STRENGTH,
-  LOCKED_REORG_FLOAT_DRAG,
-  WALL_PADDING,
-  MAX_TOTAL_FRAGMENTS,
   BURST_WINDOW_S,
   MAX_BURST_CLICKS,
-  LOAD_FRAGMENT_THRESHOLD,
-  LOAD_DT_THRESHOLD,
-  LOAD_RECOVERY_THRESHOLD,
 } from '@/lib/bannerPhysics';
+import { shapeOutline } from '@/lib/shatterGeometry';
+import { ShatterEngine, type EngineSettings, type EngineShape, type PieceView } from '@/lib/shatterEngine';
 
-export { DEFAULT_COLOR_STOPS, DEFAULT_CONTROLS };
+export const DEFAULT_CONTROLS: Controls = {
+  ...BASE_DEFAULT_CONTROLS,
+  hoverStrength: 0.2,
+  spring: 0.9,
+  damping: 0.5,
+  shardSpread: 0.5,
+  explosionForce: 1.5,
+  gravity: 0.7,
+  settleTime: 3,
+};
+
+export { DEFAULT_COLOR_STOPS };
 
 // Memoized SVG inner element to avoid re-parsing dangerouslySetInnerHTML on every render
 const ShapeElement = memo(({ html }: { html: string }) => (
@@ -65,9 +58,9 @@ const STARTER_SVG = `<svg width="1440" height="380" viewBox="0 0 1440 380" fill=
 <rect x="1421" y="0" width="19"  height="380" rx="9.5"   fill="#A5F3FC"/>
 </svg>`;
 
-const MAX_TOTAL_CRACK_LINES = 180;
-const SHOW_LOAD_INDICATOR = false;
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
+const DRAG_THRESHOLD_PX = 6;
+const PROGRAMMATIC_STAGGER_MS = 60;
 
 // Intro entrance — Editorial glide. Overdamped spring + tight rest thresholds so
 // shapes arrive clean with no subpixel tail. Opacity fades up on its own tween so
@@ -95,12 +88,11 @@ const parseSVG = (svgMarkup: string): { shapes: Shape[]; viewBox: ViewBox } => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgMarkup, 'image/svg+xml');
   const svg = doc.querySelector('svg');
-  
+
   if (!svg) {
     return { shapes: [], viewBox: { x: 0, y: 0, width: 1440, height: 380 } };
   }
 
-  // Parse viewBox
   const viewBoxAttr = svg.getAttribute('viewBox');
   let viewBox: ViewBox = { x: 0, y: 0, width: 1440, height: 380 };
   if (viewBoxAttr) {
@@ -119,7 +111,7 @@ const parseSVG = (svgMarkup: string): { shapes: Shape[]; viewBox: ViewBox } => {
 
   const shapes: Shape[] = [];
   const shapeTypes = ['rect', 'circle', 'ellipse', 'path', 'polygon', 'polyline', 'line'];
-  
+
   let shapeId = 0;
   shapeTypes.forEach(type => {
     svg.querySelectorAll(type).forEach((el) => {
@@ -127,8 +119,7 @@ const parseSVG = (svgMarkup: string): { shapes: Shape[]; viewBox: ViewBox } => {
       for (const attr of Array.from(el.attributes)) {
         attrs[attr.name] = attr.value;
       }
-      
-      // Calculate bounds and centroid
+
       const bounds = calculateBounds(type, attrs);
       const centroid = {
         x: bounds.x + bounds.width / 2,
@@ -151,6 +142,7 @@ const parseSVG = (svgMarkup: string): { shapes: Shape[]; viewBox: ViewBox } => {
 
   return { shapes, viewBox };
 };
+
 const calculateBounds = (type: string, attrs: Record<string, string>) => {
   switch (type) {
     case 'rect':
@@ -173,363 +165,81 @@ const calculateBounds = (type: string, attrs: Record<string, string>) => {
       const ry = parseFloat(attrs.ry || '0');
       return { x: cx - rx, y: cy - ry, width: rx * 2, height: ry * 2 };
     }
+    case 'polygon':
+    case 'polyline': {
+      const values = (attrs.points || '').trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+      const xs = values.filter((_, i) => i % 2 === 0);
+      const ys = values.filter((_, i) => i % 2 === 1);
+      if (xs.length === 0 || ys.length === 0) return { x: 0, y: 0, width: 100, height: 100 };
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+    }
     default:
       return { x: 0, y: 0, width: 100, height: 100 };
   }
 };
 
 // ============================================================================
-// PRESET ENGINE
+// HOVER
 // ============================================================================
-type PresetKey = 'voronoi';
-
-const PRESETS: Record<PresetKey, {
-  name: string;
-  description: string;
-  initClick: (state: PresetState, point: { x: number; y: number }, controls: Controls, shapes?: Shape[], viewBox?: ViewBox, clickedShapeId?: string | null) => PresetState;
-  update: (state: PresetState, dt: number, pointer: { x: number; y: number } | null, controls: Controls, shapes: Shape[], viewBox: ViewBox) => PresetState;
-  shapeTransform: (shape: Shape, state: PresetState, pointer: { x: number; y: number } | null, controls: Controls, viewBox: ViewBox) => ShapeTransform;
-}> = {
-  // -------------------------------------------------------------------------
-  // VORONOI SHATTER
-  // Click on a shape to shatter it into pieces. Click pieces to shatter further.
-  // After a delay, all pieces spring back together.
-  // -------------------------------------------------------------------------
-  voronoi: {
-    name: 'Voronoi Shatter',
-    description: 'Click shapes to shatter them into pieces',
-    initClick: (state, point, controls, _shapes, viewBox, clickedShapeId) => {
-      // This is handled specially in the component - see handleVoronoiClick
-      return { 
-        ...state, 
-        clickPoint: point, 
-        clickTime: state.clickTime, // Don't reset
-        lastClickTime: state.clickTime,
-      };
-    },
-    update: (state, dt, _pointer, controls, shapes, viewBox) => {
-      const newClickTime = state.clickTime + dt;
-      const settleDelay = controls.settleTime; // Delay after last click before returning
-      
-      // Check if we should start settling (no clicks for a while)
-      const timeSinceLastClick = newClickTime - state.lastClickTime;
-      const shouldStartSettling = controls.disableReorg < 0.5 &&
-                                  timeSinceLastClick > settleDelay &&
-                                  state.shardFragments.length > 0 &&
-                                  !state.isReturning;
-
-      let nextReorgPhase = state.reorgPhase;
-      let nextReturnStartTime = state.returnStartTime;
-      if (shouldStartSettling) {
-        nextReorgPhase = 'float';
-        nextReturnStartTime = newClickTime;
-      } else if (!state.isReturning) {
-        nextReorgPhase = 'none';
-      } else if (state.returnMode === 'grid' && state.reorgPhase === 'float') {
-        const floatElapsed = newClickTime - state.returnStartTime;
-        if (floatElapsed * 1000 >= controls.floatDurationMs) {
-          nextReorgPhase = 'settle';
-          nextReturnStartTime = newClickTime;
-        }
-      }
-      
-      let newState = { 
-        ...state, 
-        clickTime: newClickTime,
-        isReturning: state.isReturning || shouldStartSettling,
-        returnStartTime: nextReturnStartTime,
-        returnMode: shouldStartSettling ? 'grid' : state.returnMode,
-        reorgPhase: nextReorgPhase,
-      };
-      
-      // Calculate grid dimensions (needed every frame for target-to-pixel conversion)
-      const gutter = 16;
-      const fragmentCount = state.shardFragments.length;
-      const cols = Math.ceil(Math.sqrt(fragmentCount * (viewBox.width / viewBox.height)));
-      const rows = Math.ceil(fragmentCount / cols);
-      const cellWidth = (viewBox.width - gutter * (cols + 1)) / cols;
-      const cellHeight = (viewBox.height - gutter * (rows + 1)) / rows;
-      
-      // Cache grid target assignments — compute once when entering return phase,
-      // then reuse on subsequent frames to prevent target flip-flopping / twitching
-      let finalTargets = newState.cachedGridTargets;
-      if (!finalTargets || shouldStartSettling) {
-        // Assign each fragment to nearest grid cell based on current position
-        const fragmentGridTargets: { col: number; row: number }[] = [];
-        
-        state.shardFragments.forEach((frag, index) => {
-          const currentX = frag.shape.centroid.x + frag.offsetX;
-          const currentY = frag.shape.centroid.y + frag.offsetY;
-          
-          let bestCol = Math.round((currentX - gutter - cellWidth / 2) / (cellWidth + gutter));
-          let bestRow = Math.round((currentY - gutter - cellHeight / 2) / (cellHeight + gutter));
-          
-          bestCol = Math.max(0, Math.min(cols - 1, bestCol));
-          bestRow = Math.max(0, Math.min(rows - 1, bestRow));
-          
-          fragmentGridTargets[index] = { col: bestCol, row: bestRow };
-        });
-        
-        // Resolve conflicts - if multiple fragments want the same cell, use spiral search
-        const occupiedCells = new Set<string>();
-        const computedTargets: { col: number; row: number }[] = [];
-        
-        fragmentGridTargets.forEach((target, index) => {
-          const { col, row } = target;
-          const key = `${col},${row}`;
-          
-          if (!occupiedCells.has(key)) {
-            occupiedCells.add(key);
-            computedTargets[index] = { col, row };
-          } else {
-            let found = false;
-            for (let radius = 1; radius < Math.max(cols, rows) && !found; radius++) {
-              for (let dc = -radius; dc <= radius && !found; dc++) {
-                for (let dr = -radius; dr <= radius && !found; dr++) {
-                  if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue;
-                  const newCol = col + dc;
-                  const newRow = row + dr;
-                  if (newCol >= 0 && newCol < cols && newRow >= 0 && newRow < rows) {
-                    const newKey = `${newCol},${newRow}`;
-                    if (!occupiedCells.has(newKey)) {
-                      occupiedCells.add(newKey);
-                      computedTargets[index] = { col: newCol, row: newRow };
-                      found = true;
-                    }
-                  }
-                }
-              }
-            }
-            if (!found) {
-              computedTargets[index] = { col, row };
-            }
-          }
-        });
-        
-        finalTargets = computedTargets;
-        newState = { ...newState, cachedGridTargets: computedTargets };
-      }
-      
-      // Update fragment physics
-      const updatedFragments = state.shardFragments.map((frag, index) => {
-        const rawElapsed = newClickTime - frag.spawnTime;
-        const delaySec = (frag.spawnDelayMs ?? 0) / 1000;
-        if (rawElapsed < delaySec) {
-          return { ...frag, isExploding: false };
-        }
-        const explosionElapsed = rawElapsed - delaySec;
-        const isExplodingNow = explosionElapsed * 1000 < controls.explosionDurationMs;
-        if (newState.isReturning) {
-          const targetX = newState.returnMode === 'original' ? 0 : (() => {
-          const { col, row } = finalTargets[index] || { col: 0, row: 0 };
-          const targetCenterX = gutter + col * (cellWidth + gutter) + cellWidth / 2;
-            return targetCenterX - frag.shape.centroid.x;
-          })();
-          const targetY = newState.returnMode === 'original' ? 0 : (() => {
-            const { col, row } = finalTargets[index] || { col: 0, row: 0 };
-          const targetCenterY = gutter + row * (cellHeight + gutter) + cellHeight / 2;
-            return targetCenterY - frag.shape.centroid.y;
-          })();
-          
-          const diffX = targetX - frag.offsetX;
-          const diffY = targetY - frag.offsetY;
-
-          let newVx = frag.vx;
-          let newVy = frag.vy;
-          let newVr = frag.vr;
-
-          if (newState.returnMode === 'grid' && newState.reorgPhase === 'float') {
-            const floatDrag = Math.max(0, 1 - controls.floatDrag * dt);
-            newVx = frag.vx * floatDrag + diffX * controls.floatStrength * dt * 60;
-            newVy = frag.vy * floatDrag + diffY * controls.floatStrength * dt * 60;
-            newVr = frag.vr * floatDrag;
-          } else {
-            // Spring towards target (grid or original position)
-            const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
-            const returnEase = smoothstep(clamp(returnElapsed / 0.6, 0, 1));
-            const springForce = controls.returnSpring * 6 * returnEase;
-            // settleDamping: 0 = very bouncy (0.95), 1 = critically damped (0.7), 2 = overdamped (0.5)
-            const damping = Math.max(0.5, 0.95 - controls.settleDamping * 0.225);
-            newVx = frag.vx * damping + diffX * springForce * dt * 60;
-            newVy = frag.vy * damping + diffY * springForce * dt * 60;
-            newVr = frag.vr * damping - frag.rotation * springForce * dt * 30;
-          }
-          
-          // Check if fragment has settled (close to target with low velocity)
-          // Use generous thresholds because spring can oscillate significantly
-          const speed = Math.hypot(newVx, newVy);
-          const distToTarget = Math.hypot(diffX, diffY);
-          const isSettled = newState.returnMode === 'grid' && 
-                           newState.reorgPhase === 'settle' && 
-                           distToTarget < 80 && 
-                           speed < 400;
-          
-          if (isSettled) {
-            // Snap to target and zero velocities
-            return {
-              ...frag,
-              vx: 0,
-              vy: 0,
-              vr: 0,
-              offsetX: targetX,
-              offsetY: targetY,
-              rotation: 0,
-              isExploding: false,
-            };
-          }
-
-          const nextOffsetX = frag.offsetX + newVx * dt;
-          const nextOffsetY = frag.offsetY + newVy * dt;
-          if (controls.disableWalls) {
-            return {
-              ...frag,
-              vx: newVx,
-              vy: newVy,
-              vr: newVr,
-              offsetX: nextOffsetX,
-              offsetY: nextOffsetY,
-              rotation: frag.rotation + newVr * dt,
-              isExploding: isExplodingNow,
-            };
-          }
-          const bounced = bounceWithinBounds(
-            frag.shape,
-            nextOffsetX,
-            nextOffsetY,
-            newVx,
-            newVy,
-            newVr,
-            viewBox,
-            WALL_PADDING,
-            controls.wallRestitution,
-            controls.wallFriction,
-            controls.wallSpinDamping
-          );
-          return {
-            ...frag,
-            vx: bounced.vx,
-            vy: bounced.vy,
-            vr: bounced.vr,
-            offsetX: bounced.x,
-            offsetY: bounced.y,
-            rotation: frag.rotation + newVr * dt,
-            isExploding: isExplodingNow,
-          };
-        } else if (isExplodingNow) {
-          // Explosion phase with damping
-          const damping = 0.97;
-          const nextOffsetX = frag.offsetX + frag.vx * dt;
-          const nextOffsetY = frag.offsetY + frag.vy * dt;
-          const nextVx = frag.vx * damping;
-          const nextVy = frag.vy * damping;
-          const nextVr = frag.vr * damping;
-          if (controls.disableWalls) {
-            return {
-              ...frag,
-              vx: nextVx,
-              vy: nextVy,
-              vr: nextVr,
-              offsetX: nextOffsetX,
-              offsetY: nextOffsetY,
-              rotation: frag.rotation + frag.vr * dt,
-              isExploding: isExplodingNow,
-            };
-          }
-          const bounced = bounceWithinBounds(
-            frag.shape,
-            nextOffsetX,
-            nextOffsetY,
-            nextVx,
-            nextVy,
-            nextVr,
-            viewBox,
-            WALL_PADDING,
-            controls.wallRestitution,
-            controls.wallFriction,
-            controls.wallSpinDamping
-          );
-          return {
-            ...frag,
-            vx: bounced.vx,
-            vy: bounced.vy,
-            vr: bounced.vr,
-            offsetX: bounced.x,
-            offsetY: bounced.y,
-            rotation: frag.rotation + frag.vr * dt,
-            isExploding: isExplodingNow,
-          };
-        }
-        return {
-          ...frag,
-          isExploding: isExplodingNow,
-        };
-      });
-      
-      // No automatic reset - fragments stay on grid until reset button is pressed
-      
-      const hasExploding = updatedFragments.some(frag => frag.isExploding);
-      const returnElapsed = Math.max(0, newClickTime - state.returnStartTime);
-      const isResetting = state.returnMode === 'original';
-      const shouldFinalizeReset = isResetting && updatedFragments.length > 0 &&
-        (returnElapsed > 1 || updatedFragments.every(frag => {
-          const speed = Math.hypot(frag.vx, frag.vy) + Math.abs(frag.vr);
-          return Math.abs(frag.offsetX) < 0.5 && Math.abs(frag.offsetY) < 0.5 && speed < 5;
-        }));
-      
-      newState.shardFragments = updatedFragments;
-      newState.lastExplosionTime = hasExploding ? newClickTime : state.lastExplosionTime;
-      if (isResetting && !newState.isReturning) {
-        newState.isReturning = true;
-      }
-      if (shouldFinalizeReset) {
-        newState = {
-          ...newState,
-          shardFragments: [],
-          shatteredShapeIds: new Set(),
-          isReturning: false,
-          returnStartTime: 0,
-          returnMode: 'grid',
-          reorgPhase: 'none',
-          cachedGridTargets: null,
-        };
-      }
-      return newState;
-    },
-    shapeTransform: (shape, state, pointer, controls, viewBox) => {
-      let x = 0;
-      let y = 0;
-      const scale = 1;
-      const rotate = 0;
-      const opacity = 1;
-
-      // Hover parallax - only when pointer is present
-      if (pointer) {
-        const shapeNormX = shape.centroid.x / viewBox.width;
-        const shapeNormY = shape.centroid.y / viewBox.height;
-        const hoverDist = distance(shapeNormX, shapeNormY, pointer.x, pointer.y);
-        const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
-        x += (pointer.x - shapeNormX) * hoverInfluence * viewBox.width * 0.25;
-        y += (pointer.y - shapeNormY) * hoverInfluence * viewBox.height * 0.25;
-      }
-
-      const constrained = constrainToBounds(shape, x, y, scale, viewBox);
-
-      return { 
-        x: constrained.x, 
-        y: constrained.y, 
-        scale, 
-        rotate, 
-        opacity, 
-        filterStrength: 0, 
-        brightness: 1 
-      };
-    },
-  },
+const computeHoverOffset = (
+  shape: Shape,
+  pointer: { x: number; y: number } | null,
+  controls: Controls,
+  viewBox: ViewBox
+) => {
+  let x = 0;
+  let y = 0;
+  if (pointer) {
+    const shapeNormX = shape.centroid.x / viewBox.width;
+    const shapeNormY = shape.centroid.y / viewBox.height;
+    const hoverDist = distance(shapeNormX, shapeNormY, pointer.x, pointer.y);
+    const hoverInfluence = Math.max(0, 1 - hoverDist / controls.hoverRadius) * controls.hoverStrength;
+    x += (pointer.x - shapeNormX) * hoverInfluence * viewBox.width * 0.25;
+    y += (pointer.y - shapeNormY) * hoverInfluence * viewBox.height * 0.25;
+  }
+  return constrainToBounds(shape, x, y, 1, viewBox);
 };
+
+const toEngineSettings = (controls: Controls, reducedMotion: boolean, paused: boolean): EngineSettings => ({
+  gravity: controls.gravity ?? BASE_DEFAULT_CONTROLS.gravity,
+  restitution: clamp(controls.wallRestitution, 0, 0.95),
+  friction: clamp(controls.wallFriction * 0.5, 0, 1),
+  walls: !controls.disableWalls,
+  timeScale: controls.timeScale,
+  explosionForce: controls.explosionForce,
+  shardSpread: controls.shardSpread,
+  explosionSpin: controls.explosionSpin,
+  returnSpring: controls.returnSpring,
+  settleDamping: controls.settleDamping,
+  reducedMotion,
+  paused,
+});
+
+// Pieces are positioned imperatively by the engine; this layer only re-renders
+// when pieces are created or removed.
+const PiecesLayer = memo(({
+  pieces,
+  getRef,
+}: {
+  pieces: PieceView[];
+  getRef: (id: string) => (el: SVGGElement | null) => void;
+}) => (
+  <g>
+    {pieces.map((piece) => (
+      <g key={piece.id} ref={getRef(piece.id)}>
+        <path d={piece.d} fill={piece.fill} stroke={piece.fill} strokeWidth={0.75} strokeLinejoin="round" />
+      </g>
+    ))}
+  </g>
+));
 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
+type PresetKey = 'voronoi';
+
 interface ControlPanelProps {
   activePreset: PresetKey;
   controls: Controls;
@@ -559,6 +269,16 @@ interface InteractiveHeroBannerProps {
   introBounceDurationMs?: number;
 }
 
+interface PendingPress {
+  pieceId: string;
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  point: { x: number; y: number };
+  radius: number;
+  scale: number;
+}
+
 const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   svgMarkup = STARTER_SVG,
   className = '',
@@ -576,17 +296,15 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   introJiggleDurationMs = 650,
   introBounce = false,
   introBounceDelayMs = 0,
-  introBounceDurationMs = 800,
 }) => {
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = useReducedMotion() ?? false;
   const containerRef = useRef<HTMLDivElement>(null);
   const [activePreset] = useState<PresetKey>('voronoi');
   const [isPaused, setIsPaused] = useState(false);
   const clickBurstRef = useRef<number[]>([]);
   const hasInteractedRef = useRef(false);
-  const resetInFlightRef = useRef(false);
   const introJiggleRanRef = useRef(false);
-  
+
   // Parse SVG
   const { shapes, viewBox } = useMemo(() => {
     const parsed = parseSVG(svgMarkup);
@@ -609,74 +327,126 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     }
     return parsed;
   }, [svgMarkup, colorStops]);
+
+  const engineShapes = useMemo<EngineShape[]>(
+    () => shapes.map((shape) => ({ id: shape.id, outline: shapeOutline(shape), fill: shape.fill || '#ECB300' })),
+    [shapes]
+  );
+
   // Controls state
   const [controls, setControls] = useState<Controls>(() => {
-    const baseControls: Controls = {
-      ...DEFAULT_CONTROLS,
-      ...(initialControls ?? {}),
-      // Locked controls (cannot be overridden by props / presets)
-      floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
-      floatDrag: LOCKED_REORG_FLOAT_DRAG,
-    };
+    const baseControls: Controls = { ...DEFAULT_CONTROLS, ...(initialControls ?? {}) };
     if (!persistControls) return baseControls;
     if (typeof window === 'undefined') return baseControls;
     try {
       const saved = window.localStorage.getItem(CONTROLS_STORAGE_KEY);
       if (!saved) return baseControls;
-      const parsed = JSON.parse(saved) as Partial<Controls>;
-      return {
-        ...baseControls,
-        ...parsed,
-        // Locked controls (cannot be overridden by localStorage)
-        floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
-        floatDrag: LOCKED_REORG_FLOAT_DRAG,
-      };
+      return { ...baseControls, ...(JSON.parse(saved) as Partial<Controls>) };
     } catch {
       return baseControls;
     }
   });
 
-  // Animation state
-  const [presetState, setPresetState] = useState<PresetState>(createInitialState());
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
-  const [isUnderLoad, setIsUnderLoad] = useState(false);
+  const [pieceViews, setPieceViews] = useState<PieceView[]>([]);
+  const [shatteredIds, setShatteredIds] = useState<Set<string>>(() => new Set());
   const [introJigglePhase, setIntroJigglePhase] = useState(1);
   const [hasEntered, setHasEntered] = useState(false);
+  const hasPieces = pieceViews.length > 0;
 
+  const engineRef = useRef<ShatterEngine | null>(null);
+  const pendingRef = useRef<PendingPress | null>(null);
+  const draggingRef = useRef(false);
+  const autoRebuildTimerRef = useRef<number | undefined>(undefined);
+  const pieceRefCallbacks = useRef(new Map<string, (el: SVGGElement | null) => void>());
 
-  const lastTimeRef = useRef<number>(0);
-  const animationRef = useRef<number>();
-  const avgDtRef = useRef<number>(0.016);
-  const presetStateRef = useRef<PresetState>(presetState);
-  const pointerRef = useRef<{ x: number; y: number } | null>(null);
-  const smoothPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const engineSettings = useMemo(
+    () => toEngineSettings(controls, prefersReducedMotion, isPaused),
+    [controls, prefersReducedMotion, isPaused]
+  );
+
+  const latest = useRef({ controls, engineSettings, engineShapes, onFirstInteraction, onResetComplete });
+  latest.current = { controls, engineSettings, engineShapes, onFirstInteraction, onResetComplete };
+
+  // Engine lifecycle — one engine per viewBox
+  useEffect(() => {
+    const engine = new ShatterEngine(
+      viewBox,
+      {
+        onChange: ({ pieces, shattered }) => {
+          setPieceViews(pieces);
+          setShatteredIds(new Set(shattered));
+        },
+        onAllRestored: () => {
+          if (!hasInteractedRef.current) return;
+          hasInteractedRef.current = false;
+          latest.current.onResetComplete?.();
+        },
+      },
+      latest.current.engineSettings,
+      latest.current.engineShapes
+    );
+    engineRef.current = engine;
+    return () => {
+      engine.destroy();
+      engineRef.current = null;
+      setPieceViews([]);
+      setShatteredIds(new Set());
+    };
+  }, [viewBox]);
 
   useEffect(() => {
-    presetStateRef.current = presetState;
-  }, [presetState]);
+    engineRef.current?.setShapes(engineShapes);
+  }, [engineShapes]);
 
   useEffect(() => {
-    pointerRef.current = pointer;
-  }, [pointer]);
+    engineRef.current?.setSettings(engineSettings);
+  }, [engineSettings]);
 
-  // Programmatic explosion trigger — fires PointerEvents at each shape centroid
+  const getPieceRef = useCallback((id: string) => {
+    let callback = pieceRefCallbacks.current.get(id);
+    if (!callback) {
+      callback = (el: SVGGElement | null) => {
+        engineRef.current?.registerElement(id, el);
+        if (!el) pieceRefCallbacks.current.delete(id);
+      };
+      pieceRefCallbacks.current.set(id, callback);
+    }
+    return callback;
+  }, []);
+
+  const markInteraction = useCallback(() => {
+    if (hasInteractedRef.current) return;
+    hasInteractedRef.current = true;
+    latest.current.onFirstInteraction?.();
+  }, []);
+
+  const clearAutoRebuild = useCallback(() => {
+    window.clearTimeout(autoRebuildTimerRef.current);
+    autoRebuildTimerRef.current = undefined;
+  }, []);
+
+  const scheduleAutoRebuild = useCallback(() => {
+    clearAutoRebuild();
+    const { disableReorg, settleTime } = latest.current.controls;
+    if (disableReorg >= 0.5) return;
+    autoRebuildTimerRef.current = window.setTimeout(() => {
+      const engine = engineRef.current;
+      if (!engine || !engine.hasPieces()) return;
+      if (draggingRef.current || pendingRef.current) {
+        scheduleAutoRebuild();
+        return;
+      }
+      engine.reassemble();
+    }, Math.max(0, settleTime) * 1000);
+  }, [clearAutoRebuild]);
+
   useEffect(() => {
-    if (!triggerExplode || !containerRef.current) return;
-    const container = containerRef.current;
-    // Normalized X centroids based on STARTER_SVG shape layout
-    const xPositions = [0.232, 0.585, 0.769, 0.878, 0.944, 0.987];
-    xPositions.forEach((normX, i) => {
-      setTimeout(() => {
-        const r = container.getBoundingClientRect();
-        container.dispatchEvent(new PointerEvent('pointerdown', {
-          bubbles: true,
-          clientX: r.left + normX * r.width,
-          clientY: r.top + r.height * 0.5,
-          pointerType: 'mouse',
-        }));
-      }, i * 60);
-    });
-  }, [triggerExplode]);
+    if (hasPieces) scheduleAutoRebuild();
+    else clearAutoRebuild();
+  }, [controls.disableReorg, controls.settleTime, hasPieces, scheduleAutoRebuild, clearAutoRebuild]);
+
+  useEffect(() => clearAutoRebuild, [clearAutoRebuild]);
 
   // Optional one-shot "hint" animation on mount for embeds/marketing surfaces.
   useEffect(() => {
@@ -684,10 +454,9 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     introJiggleRanRef.current = true;
 
     let rafId: number | undefined;
-    let timerId: number | undefined;
     let startTime = 0;
 
-    timerId = window.setTimeout(() => {
+    const timerId = window.setTimeout(() => {
       setIntroJigglePhase(0);
       startTime = performance.now();
       const tick = (now: number) => {
@@ -701,7 +470,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     }, Math.max(0, introJiggleDelayMs));
 
     return () => {
-      if (timerId !== undefined) window.clearTimeout(timerId);
+      window.clearTimeout(timerId);
       if (rafId !== undefined) cancelAnimationFrame(rafId);
     };
   }, [introJiggle, introJiggleDelayMs, introJiggleDurationMs, prefersReducedMotion]);
@@ -722,14 +491,30 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     setControls(prev => ({ ...prev, ...liveControls }));
   }, [liveControls]);
 
-  const effectiveControls = useMemo(() => {
-    if (!isUnderLoad) return controls;
-    return {
-      ...controls,
-      hoverStrength: 0,
-      hoverRadius: 0.0001,
-    };
-  }, [controls, isUnderLoad]);
+  // Hover transforms for whole shapes. Hover is suspended while pieces exist so
+  // the shapes stay where their colliders are.
+  const shapeTransforms = useMemo(() => {
+    const transforms = new Map<string, { x: number; y: number }>();
+    const jiggleActive = introJiggle && !prefersReducedMotion && introJigglePhase < 1;
+    const wiggleEnvelope = jiggleActive ? Math.max(0, 1 - introJigglePhase) : 0;
+    const wiggleWaveX = jiggleActive ? Math.sin(introJigglePhase * Math.PI * 6) : 0;
+    const hoverPointer = hasEntered && !hasPieces ? pointer : null;
+
+    shapes.forEach((shape, index) => {
+      const hover = computeHoverOffset(shape, hoverPointer, controls, viewBox);
+      if (!jiggleActive) {
+        transforms.set(shape.id, hover);
+        return;
+      }
+      const count = Math.max(1, shapes.length - 1);
+      const spreadWeight = 0.7 + (index / count) * 0.35;
+      const direction = index % 2 === 0 ? 1 : -1;
+      const jiggleX = wiggleWaveX * 6 * wiggleEnvelope * direction * spreadWeight;
+      const jiggleY = Math.sin(introJigglePhase * Math.PI * 4 + index * 0.6) * 2 * wiggleEnvelope;
+      transforms.set(shape.id, constrainToBounds(shape, hover.x + jiggleX, hover.y + jiggleY, 1, viewBox));
+    });
+    return transforms;
+  }, [shapes, pointer, controls, viewBox, introJiggle, introJigglePhase, prefersReducedMotion, hasEntered, hasPieces]);
 
   const getBurstMetrics = (now: number, includeNow: boolean) => {
     const recent = clickBurstRef.current.filter((t) => now - t <= BURST_WINDOW_S);
@@ -741,228 +526,166 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     return { burstFactor, cursorScale };
   };
 
-  const getPressureFactor = (event: React.PointerEvent | null) => {
-    if (!event || event.pointerType === 'mouse') return 1;
+  const getPressureFactor = (event: React.PointerEvent) => {
+    if (event.pointerType === 'mouse') return 1;
     if (typeof event.pressure !== 'number' || event.pressure <= 0) return 1;
     return clamp(0.85 + event.pressure * 0.75, 0.85, 1.6);
   };
 
+  const toViewBoxPoint = (clientX: number, clientY: number) => {
+    const rect = containerRef.current!.getBoundingClientRect();
+    return {
+      rect,
+      point: {
+        x: viewBox.x + ((clientX - rect.left) / rect.width) * viewBox.width,
+        y: viewBox.y + ((clientY - rect.top) / rect.height) * viewBox.height,
+      },
+    };
+  };
+
+  const shatterAt = (point: { x: number; y: number }, radius: number, scale: number, pressedPieceId?: string) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    const maxTargets = 4;
+    const pieceIds = engine.queryPieces(point, radius).filter((id) => id !== pressedPieceId);
+    if (pressedPieceId) pieceIds.unshift(pressedPieceId);
+
+    const shapeIds: string[] = [];
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      const shape = shapes[i];
+      if (shatteredIds.has(shape.id)) continue;
+      const offset = shapeTransforms.get(shape.id) ?? { x: 0, y: 0 };
+      const b = shape.bounds;
+      const closestX = clamp(point.x, b.x + offset.x, b.x + offset.x + b.width);
+      const closestY = clamp(point.y, b.y + offset.y, b.y + offset.y + b.height);
+      if (distance(point.x, point.y, closestX, closestY) <= radius) shapeIds.push(shape.id);
+    }
+
+    pieceIds.slice(0, maxTargets).forEach((id) => engine.shatterPiece(id, point, scale));
+    shapeIds.slice(0, Math.max(0, maxTargets - pieceIds.length)).forEach((id) => {
+      engine.shatterShape(id, point, shapeTransforms.get(id) ?? { x: 0, y: 0 }, scale);
+    });
+  };
+
+  const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
+  const cursorSize = Math.round(58 * cursorScale);
+  const cursorHotspot = Math.round(cursorSize / 2);
+  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 58 58"><circle cx="29" cy="29" r="28" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
+  const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
+  const customCursorRef = useRef(customCursor);
+  customCursorRef.current = customCursor;
+
+  const setCursor = (cursor: string) => {
+    if (containerRef.current) containerRef.current.style.cursor = cursor;
+  };
+
+  const releaseCapture = (pointerId: number) => {
+    const container = containerRef.current;
+    if (container?.hasPointerCapture(pointerId)) container.releasePointerCapture(pointerId);
+  };
+
   // Pointer handlers
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const engine = engineRef.current;
+    if (!engine || !containerRef.current) return;
+    clearAutoRebuild();
+    markInteraction();
+
+    const { rect, point } = toViewBoxPoint(e.clientX, e.clientY);
+    const { burstFactor, cursorScale: pressScale } = getBurstMetrics(performance.now() / 1000, true);
+    const scale = clamp(burstFactor * getPressureFactor(e), 0.85, 2.4);
+    const radiusPx = 29 * pressScale;
+    const radius = Math.max((radiusPx / rect.width) * viewBox.width, (radiusPx / rect.height) * viewBox.height);
+
+    if (engine.isReassembling()) engine.cancelReassembly();
+
+    const grabbedId = prefersReducedMotion ? null : engine.pieceAt(point);
+    if (grabbedId) {
+      pendingRef.current = {
+        pieceId: grabbedId,
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        point,
+        radius,
+        scale,
+      };
+      containerRef.current.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    shatterAt(point, radius, scale);
+    scheduleAutoRebuild();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const engine = engineRef.current;
+    if (!containerRef.current || !engine) return;
+    const { rect, point } = toViewBoxPoint(e.clientX, e.clientY);
+
+    const pending = pendingRef.current;
+    if (pending && pending.pointerId === e.pointerId) {
+      if (Math.hypot(e.clientX - pending.clientX, e.clientY - pending.clientY) > DRAG_THRESHOLD_PX) {
+        pendingRef.current = null;
+        if (engine.beginDrag(pending.pieceId, point, e.timeStamp)) {
+          draggingRef.current = true;
+          setCursor('grabbing');
+        }
+      }
+      return;
+    }
+    if (draggingRef.current) {
+      engine.moveDrag(point, e.timeStamp);
+      return;
+    }
+
     setPointer({
       x: (e.clientX - rect.left) / rect.width,
       y: (e.clientY - rect.top) / rect.height,
     });
-  }, []);
+    const overPiece = !prefersReducedMotion && e.pointerType !== 'touch' && engine.pieceAt(point) !== null;
+    setCursor(overPiece ? 'grab' : customCursorRef.current);
+  };
 
-  const handlePointerLeave = useCallback(() => {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    const engine = engineRef.current;
+    const pending = pendingRef.current;
+    if (pending && pending.pointerId === e.pointerId) {
+      pendingRef.current = null;
+      releaseCapture(e.pointerId);
+      shatterAt(pending.point, pending.radius, pending.scale, pending.pieceId);
+    } else if (draggingRef.current) {
+      draggingRef.current = false;
+      releaseCapture(e.pointerId);
+      engine?.endDrag(e.timeStamp);
+      setCursor('grab');
+    }
+    scheduleAutoRebuild();
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent) => {
+    pendingRef.current = null;
+    if (draggingRef.current) {
+      draggingRef.current = false;
+      engineRef.current?.endDrag(e.timeStamp, false);
+    }
+    releaseCapture(e.pointerId);
+    scheduleAutoRebuild();
+  };
+
+  const handlePointerLeave = () => {
+    if (draggingRef.current || pendingRef.current) return;
     setPointer(null);
-  }, []);
-
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (!hasInteractedRef.current) {
-      hasInteractedRef.current = true;
-      onFirstInteraction?.();
-    }
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const clientX = e.clientX;
-    const clientY = e.clientY;
-    const point = {
-      x: (clientX - rect.left) / rect.width,
-      y: (clientY - rect.top) / rect.height,
-    };
-
-    const now = performance.now() / 1000;
-    const { burstFactor, cursorScale } = getBurstMetrics(now, true);
-    const pressureFactor = getPressureFactor(e);
-    const shatterScale = clamp(burstFactor * pressureFactor, 0.85, 2.4);
-
-    if (presetState.returnMode === 'original') {
-      return;
-    }
-    
-    // Convert to viewBox coordinates for hit testing
-    const clickX = point.x * viewBox.width;
-    const clickY = point.y * viewBox.height;
-    
-    // Cursor radius in viewBox coordinates (50px cursor, scaled to viewBox)
-    // Oversized hit area to err on the side of interaction (58px total).
-    const cursorRadiusPx = 29 * cursorScale; // 58px click area
-    const cursorRadiusX = (cursorRadiusPx / rect.width) * viewBox.width;
-    const cursorRadiusY = (cursorRadiusPx / rect.height) * viewBox.height;
-    const cursorRadius = Math.max(cursorRadiusX, cursorRadiusY);
-    
-    // Special handling for voronoi preset - detect which shape was clicked
-    if (activePreset === 'voronoi') {
-      // Get all clickable shapes in render order (shapes first, fragments on top)
-      const clickableShapes: Shape[] = [];
-      
-      // Add original shapes that haven't been shattered
-      shapes.forEach(shape => {
-        if (!presetState.shatteredShapeIds.has(shape.id)) {
-          const transform = shapeTransforms.get(shape.id);
-          const offsetX = transform?.x ?? 0;
-          const offsetY = transform?.y ?? 0;
-          clickableShapes.push({
-            ...shape,
-            bounds: {
-              x: shape.bounds.x + offsetX,
-              y: shape.bounds.y + offsetY,
-              width: shape.bounds.width,
-              height: shape.bounds.height,
-            },
-            centroid: {
-              x: shape.centroid.x + offsetX,
-              y: shape.centroid.y + offsetY,
-            },
-          });
-        }
-      });
-
-      // Add fragments (rendered last, so on top)
-      const hitSmoothedPtr = smoothPointerRef.current;
-      presetState.shardFragments.forEach(frag => {
-        let hoverX = 0;
-        let hoverY = 0;
-        if (hitSmoothedPtr && !isUnderLoad) {
-          const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
-          const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
-          const hoverDist = distance(fragNormX, fragNormY, hitSmoothedPtr.x, hitSmoothedPtr.y);
-          const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
-          hoverX = (hitSmoothedPtr.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
-          hoverY = (hitSmoothedPtr.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
-        }
-
-        const adjustedBounds = {
-          x: frag.shape.bounds.x + frag.offsetX + hoverX,
-          y: frag.shape.bounds.y + frag.offsetY + hoverY,
-          width: frag.shape.bounds.width,
-          height: frag.shape.bounds.height,
-        };
-        clickableShapes.push({
-          ...frag.shape,
-          bounds: adjustedBounds,
-          centroid: {
-            x: frag.shape.centroid.x + frag.offsetX + hoverX,
-            y: frag.shape.centroid.y + frag.offsetY + hoverY,
-          },
-        });
-      });
-      
-      // Find all shapes within the cursor radius (topmost last)
-      const hitShapes: Shape[] = [];
-      for (let i = clickableShapes.length - 1; i >= 0; i -= 1) {
-        const shape = clickableShapes[i];
-        const b = shape.bounds;
-        // Check if cursor circle overlaps with shape rectangle
-        // Find closest point on rectangle to cursor center
-        const closestX = clamp(clickX, b.x, b.x + b.width);
-        const closestY = clamp(clickY, b.y, b.y + b.height);
-        const dist = distance(clickX, clickY, closestX, closestY);
-        
-        if (dist <= cursorRadius) {
-          hitShapes.push(shape);
-        }
-      }
-      
-      if (hitShapes.length > 0) {
-        const maxHitShapes = isUnderLoad ? 2 : 4;
-        const limitedHitShapes = hitShapes.slice(0, maxHitShapes);
-        const fragmentsToRemove = new Set<string>();
-        let combinedNewFragments: ShardFragment[] = [];
-        const newShatteredIds = new Set(presetState.shatteredShapeIds);
-        const loadScale = clamp(1 - presetState.shardFragments.length / MAX_TOTAL_FRAGMENTS, 0.35, 1);
-        const effectiveShatterScale = shatterScale * loadScale * (isUnderLoad ? 0.7 : 1);
-
-        limitedHitShapes.forEach((hitShape) => {
-          const isFragment = hitShape.id.startsWith('frag-');
-        let fragmentToRemove: ShardFragment | null = null;
-        
-        if (isFragment) {
-            fragmentToRemove = presetState.shardFragments.find(f => f.shape.id === hitShape.id) || null;
-            if (!fragmentToRemove) return;
-          } else {
-            newShatteredIds.add(hitShape.id);
-        }
-        
-        const generation = isFragment && fragmentToRemove ? fragmentToRemove.generation + 1 : 1;
-        const newFragments = createFragmentsFromShape(
-          hitShape,
-          point,
-          viewBox,
-          controls,
-          generation,
-          presetState.clickTime,
-          effectiveShatterScale
-        );
-        
-          if (fragmentToRemove) {
-            fragmentsToRemove.add(fragmentToRemove.id);
-          }
-          combinedNewFragments = combinedNewFragments.concat(newFragments);
-        });
-
-        setPresetState(prev => {
-          const updatedFragments = fragmentsToRemove.size
-            ? prev.shardFragments.filter(f => !fragmentsToRemove.has(f.id))
-            : prev.shardFragments;
-
-          let nextFragments = [...updatedFragments, ...combinedNewFragments];
-          if (nextFragments.length > MAX_TOTAL_FRAGMENTS) {
-            nextFragments = nextFragments
-              .slice()
-              .sort((a, b) => b.spawnTime - a.spawnTime)
-              .slice(0, MAX_TOTAL_FRAGMENTS);
-          }
-          
-          return {
-            ...prev,
-            shardFragments: nextFragments,
-            shatteredShapeIds: newShatteredIds,
-            clickPoint: point,
-            lastClickTime: prev.clickTime,
-            lastExplosionTime: prev.clickTime,
-            isReturning: false,
-            reorgPhase: 'none',
-            cachedGridTargets: null,
-          };
-        });
-        return;
-      }
-    }
-    
-    // Default click handling for other presets
-    const preset = PRESETS[activePreset];
-    setPresetState(prev => preset.initClick(prev, point, controls, shapes, viewBox, null));
-  }, [activePreset, controls, shapes, viewBox, presetState]);
+    setCursor(customCursorRef.current);
+  };
 
   const handleReset = useCallback(() => {
-    setPresetState(prev => {
-      if (prev.returnMode === 'original' && prev.isReturning) {
-        return prev;
-      }
-      if (prev.shardFragments.length === 0) {
-        resetInFlightRef.current = true;
-        return createInitialState();
-      }
-
-      resetInFlightRef.current = true;
-      return {
-        ...prev,
-        isReturning: true,
-        returnStartTime: prev.clickTime,
-        returnMode: 'original',
-        lastExplosionTime: prev.clickTime,
-        lastClickTime: prev.clickTime,
-        shatteredShapeIds: new Set(),
-        reorgPhase: 'reset',
-        cachedGridTargets: null,
-      };
-    });
-  }, []);
+    clearAutoRebuild();
+    pendingRef.current = null;
+    draggingRef.current = false;
+    engineRef.current?.reassemble();
+  }, [clearAutoRebuild]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -987,123 +710,28 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     return () => window.removeEventListener('message', onMessage);
   }, [handleReset]);
 
+  // Programmatic explosion trigger — blasts existing pieces and shatters every
+  // whole shape in a left-to-right wave.
   useEffect(() => {
-    const resetComplete =
-      presetState.returnMode === 'grid' &&
-      presetState.isReturning === false &&
-      presetState.shardFragments.length === 0;
-    if (resetInFlightRef.current && resetComplete) {
-      resetInFlightRef.current = false;
-      hasInteractedRef.current = false;
-      onResetComplete?.();
-    }
-  }, [presetState.returnMode, presetState.isReturning, presetState.shardFragments.length, onResetComplete]);
-
-  // Animation loop - uses refs for pointer to avoid effect restarts on mouse move
-  useEffect(() => {
-    if (prefersReducedMotion || isPaused) return;
-
-    const animate = (time: number) => {
-      const dt = lastTimeRef.current ? Math.min((time - lastTimeRef.current) / 1000, 0.1) : 0.016;
-      lastTimeRef.current = time;
-
-      const preset = PRESETS[activePreset];
-      
-      // Update preset state - use pointerRef to avoid stale closure
-      setPresetState(prev => preset.update(prev, dt * controls.timeScale, pointerRef.current, effectiveControls, shapes, viewBox));
-
-      // Smooth the pointer for fragment hover (spring-like feel)
-      const currentPointer = pointerRef.current;
-      if (currentPointer) {
-        if (smoothPointerRef.current) {
-          const lerpFactor = 1 - Math.pow(0.001, dt); // ~0.12 at 60fps
-          smoothPointerRef.current = {
-            x: smoothPointerRef.current.x + (currentPointer.x - smoothPointerRef.current.x) * lerpFactor,
-            y: smoothPointerRef.current.y + (currentPointer.y - smoothPointerRef.current.y) * lerpFactor,
-          };
-        } else {
-          smoothPointerRef.current = { ...currentPointer };
-        }
-      } else {
-        smoothPointerRef.current = null;
-      }
-
-      const fragmentCount = presetStateRef.current.shardFragments.length;
-      avgDtRef.current = avgDtRef.current * 0.9 + dt * 0.1;
-      const overload = fragmentCount > LOAD_FRAGMENT_THRESHOLD || avgDtRef.current > LOAD_DT_THRESHOLD;
-      const recovered = fragmentCount < LOAD_FRAGMENT_THRESHOLD * 0.8 && avgDtRef.current < LOAD_RECOVERY_THRESHOLD;
-      if (!isUnderLoad && overload) {
-        setIsUnderLoad(true);
-      } else if (isUnderLoad && recovered) {
-        setIsUnderLoad(false);
-      }
-      
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [activePreset, controls.timeScale, effectiveControls, shapes, prefersReducedMotion, isPaused, isUnderLoad, viewBox]);
-
-  // Calculate transforms - memoized to avoid extra state update cycle.
-  // During the intro entrance we feed the preset a null pointer so hover parallax
-  // does not move the entrance target mid-spring, which would read as jitter.
-  const shapeTransforms = useMemo(() => {
-    const preset = PRESETS[activePreset];
-    const transforms = new Map<string, ShapeTransform>();
-    const jiggleActive = introJiggle && !prefersReducedMotion && introJigglePhase < 1;
-    const wiggleEnvelope = jiggleActive ? Math.max(0, 1 - introJigglePhase) : 0;
-    const wiggleWaveX = jiggleActive ? Math.sin(introJigglePhase * Math.PI * 6) : 0;
-    const transformPointer = hasEntered ? pointer : null;
-
-    shapes.forEach((shape, index) => {
-      const transform = preset.shapeTransform(shape, presetState, transformPointer, effectiveControls, viewBox);
-
-      if (!jiggleActive) {
-        transforms.set(shape.id, transform);
-        return;
-      }
-
-      const count = Math.max(1, shapes.length - 1);
-      const spreadWeight = 0.7 + (index / count) * 0.35;
-      const direction = index % 2 === 0 ? 1 : -1;
-      const jiggleX = wiggleWaveX * 6 * wiggleEnvelope * direction * spreadWeight;
-      const jiggleY = Math.sin(introJigglePhase * Math.PI * 4 + index * 0.6) * 2 * wiggleEnvelope;
-      const constrained = constrainToBounds(
-        shape,
-        transform.x + jiggleX,
-        transform.y + jiggleY,
-        transform.scale,
-        viewBox
-      );
-
-      transforms.set(shape.id, {
-        ...transform,
-        x: constrained.x,
-        y: constrained.y,
-      });
-    });
-    return transforms;
-  }, [
-    activePreset,
-    presetState,
-    pointer,
-    effectiveControls,
-    shapes,
-    viewBox,
-    introJiggle,
-    introJigglePhase,
-    prefersReducedMotion,
-    hasEntered,
-  ]);
+    if (!triggerExplode) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+    markInteraction();
+    engine.cancelReassembly();
+    engine.blastPieces(1);
+    const ordered = shapes.slice().sort((a, b) => a.centroid.x - b.centroid.x);
+    const timers = ordered.map((shape, i) =>
+      window.setTimeout(() => {
+        engineRef.current?.shatterShape(shape.id, shape.centroid, { x: 0, y: 0 }, 1);
+      }, i * PROGRAMMATIC_STAGGER_MS)
+    );
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, [triggerExplode, shapes, markInteraction]);
 
   // Control updater
-  const updateControl = (key: keyof Controls, value: number) => {
-    if (key === 'floatStrength' || key === 'floatDrag') return;
+  const updateControl = useCallback((key: keyof Controls, value: number) => {
     setControls(prev => ({ ...prev, [key]: value }));
-  };
+  }, []);
 
   useEffect(() => {
     if (!persistControls) return;
@@ -1114,16 +742,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     }
   }, [controls, persistControls]);
 
-  const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
-  const cursorSize = Math.round(58 * cursorScale);
-  const cursorHotspot = Math.round(cursorSize / 2);
-  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 58 58"><circle cx="29" cy="29" r="28" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
-  const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
-
-  const resetProgress = presetState.returnMode === 'original'
-    ? clamp((presetState.clickTime - presetState.returnStartTime) / 0.25, 0, 1)
-    : 0;
-
   return (
     <div
       className={`relative w-full overflow-visible ${className}`}
@@ -1132,51 +750,31 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       {/* Main Banner */}
       <div
         ref={containerRef}
-        className="relative w-full overflow-visible"
+        className="relative w-full overflow-visible select-none"
         style={{
           ...(fillViewport ? { height: '100vh' } : { aspectRatio: `${viewBox.width} / ${viewBox.height}` }),
           background: 'transparent',
           cursor: customCursor,
+          touchAction: hasPieces ? 'none' : 'manipulation',
         }}
-        onPointerMove={handlePointerMove}
-        onPointerLeave={handlePointerLeave}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerLeave}
       >
-        {/* SVG Container */}
         <svg
           width="100%"
           height="100%"
           viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
           preserveAspectRatio={fillViewport ? "none" : "xMidYMid meet"}
           overflow="visible"
-          style={{ display: 'block', willChange: 'transform', overflow: 'visible' }}
+          style={{ display: 'block', overflow: 'visible' }}
         >
-          {/* Filters for effects */}
-          <defs>
-            <filter id="displacement-filter" x="-50%" y="-50%" width="200%" height="200%">
-              <feTurbulence type="turbulence" baseFrequency="0.02" numOctaves="3" seed="1" result="turbulence" />
-              <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="0" xChannelSelector="R" yChannelSelector="G" />
-            </filter>
-            <filter id="glow-filter" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="4" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
-          {/* Render shapes - for voronoi, hide shattered shapes unless resetting */}
           {shapes.map((shape, index) => {
-            // For voronoi preset, hide shapes that have been shattered into fragments
-            if (activePreset === 'voronoi' && presetState.shatteredShapeIds.has(shape.id) && presetState.returnMode !== 'original') {
-              return null;
-            }
-            
-            const transform = shapeTransforms.get(shape.id) || { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, filterStrength: 0, brightness: 1 };
-            const centerX = shape.centroid.x;
-            const centerY = shape.centroid.y;
+            if (shatteredIds.has(shape.id)) return null;
 
+            const transform = shapeTransforms.get(shape.id) || { x: 0, y: 0 };
             const isEntering = introBounce && !prefersReducedMotion && !hasEntered;
             const entranceDelaySec =
               (introBounceDelayMs + index * INTRO_STAGGER_MS) / 1000;
@@ -1187,22 +785,10 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                 key={shape.id}
                 initial={
                   isEntering
-                    ? {
-                        x: transform.x,
-                        y: transform.y + INTRO_Y_OFFSET,
-                        scale: transform.scale,
-                        rotate: transform.rotate,
-                        opacity: 0,
-                      }
-                    : false
+                    ? { x: transform.x, y: transform.y + INTRO_Y_OFFSET, scale: 1, rotate: 0, opacity: 0 }
+                    : { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 }
                 }
-                animate={{
-                  x: transform.x,
-                  y: transform.y,
-                  scale: transform.scale,
-                  rotate: transform.rotate,
-                  opacity: transform.opacity * (presetState.returnMode === 'original' ? resetProgress : 1),
-                }}
+                animate={{ x: transform.x, y: transform.y, scale: 1, rotate: 0, opacity: 1 }}
                 transition={
                   hasEntered
                     ? {
@@ -1221,56 +807,15 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
                     setHasEntered(true);
                   }
                 }}
-                style={{
-                  transformOrigin: `${centerX}px ${centerY}px`,
-                  filter: transform.brightness !== 1 
-                    ? `brightness(${transform.brightness})`
-                    : undefined,
-                }}
+                style={{ transformOrigin: `${shape.centroid.x}px ${shape.centroid.y}px` }}
               >
                 <ShapeElement html={shape.element} />
               </motion.g>
             );
           })}
-          
-          {/* Render voronoi fragments with direct SVG transforms (no framer-motion overhead) */}
-          {activePreset === 'voronoi' && presetState.shardFragments.map((frag) => {
-            const centerX = frag.shape.centroid.x;
-            const centerY = frag.shape.centroid.y;
-            
-            // Calculate hover offset for this fragment (uses smoothed pointer for spring-like feel)
-            let hoverX = 0, hoverY = 0;
-            const smoothPtr = smoothPointerRef.current;
-            if (smoothPtr && !isUnderLoad) {
-              const fragNormX = (frag.shape.centroid.x + frag.offsetX) / viewBox.width;
-              const fragNormY = (frag.shape.centroid.y + frag.offsetY) / viewBox.height;
-              const hoverDist = distance(fragNormX, fragNormY, smoothPtr.x, smoothPtr.y);
-              const hoverInfluence = Math.max(0, 1 - hoverDist / effectiveControls.hoverRadius) * effectiveControls.hoverStrength;
-              hoverX = (smoothPtr.x - fragNormX) * hoverInfluence * viewBox.width * 0.25;
-              hoverY = (smoothPtr.y - fragNormY) * hoverInfluence * viewBox.height * 0.25;
-            }
-            
-            const tx = frag.offsetX + hoverX;
-            const ty = frag.offsetY + hoverY;
-            const fragOpacity = presetState.returnMode === 'original' ? 1 - resetProgress : 1;
-            
-            return (
-              <g
-                key={frag.id}
-                transform={`translate(${tx}, ${ty}) rotate(${frag.rotation}, ${centerX}, ${centerY})`}
-                opacity={fragOpacity}
-              >
-                <ShapeElement html={frag.shape.element} />
-              </g>
-            );
-          })}
-        </svg>
 
-        {SHOW_LOAD_INDICATOR && (
-          <div className="absolute top-2 right-2 rounded-full px-2 py-1 text-[10px] uppercase tracking-wider bg-black/30 dark:bg-black/40 text-white">
-            {isUnderLoad ? 'Perf: Low' : 'Perf: High'}
-          </div>
-        )}
+          <PiecesLayer pieces={pieceViews} getRef={getPieceRef} />
+        </svg>
       </div>
 
       {/* Render external controls if provided */}

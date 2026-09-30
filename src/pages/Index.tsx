@@ -328,22 +328,14 @@ const ControlPanel = ({
               <ControlSlider label="Spread" value={controls.shardSpread} onChange={(v) => updateControlAndClearSaved("shardSpread", v)} min={0.1} max={3} />
               <ControlSlider label="Travel" value={controls.explosionForce} onChange={(v) => updateControlAndClearSaved("explosionForce", v)} min={0.3} max={3} />
               <ControlSlider label="Spin" value={controls.explosionSpin} onChange={(v) => updateControlAndClearSaved("explosionSpin", v)} min={0} max={3} />
-              <ControlSlider
-                label="Duration"
-                value={controls.explosionDurationMs}
-                onChange={(v) => updateControlAndClearSaved("explosionDurationMs", v)}
-                min={150}
-                max={2000}
-                step={50}
-                formatValue={(v) => `${Math.round(v)}ms`}
-              />
+              <ControlSlider label="Gravity" value={controls.gravity} onChange={(v) => updateControlAndClearSaved("gravity", v)} min={0} max={3} />
             </div>
           </div>
 
-          {/* Reorg controls */}
+          {/* Rebuild controls */}
           <div className="w-full min-w-0 flex flex-col gap-1">
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">Reorg</label>
+              <label className="block text-[10px] uppercase tracking-wider text-muted-foreground">Auto rebuild</label>
               <button
                 onClick={() => {
                   const next = controls.disableReorg < 0.5 ? 1 : 0;
@@ -354,8 +346,8 @@ const ControlPanel = ({
                     ? "bg-muted-foreground"
                     : "bg-muted"
                 }`}
-                title={controls.disableReorg < 0.5 ? "Reorg enabled" : "Reorg disabled"}
-                aria-label="Toggle reorg"
+                title={controls.disableReorg < 0.5 ? "Auto rebuild on" : "Auto rebuild off"}
+                aria-label="Toggle auto rebuild"
               >
                 <span
                   className="absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-all"
@@ -364,16 +356,7 @@ const ControlPanel = ({
               </button>
             </div>
             <div className={`flex flex-col gap-1 items-start justify-start h-fit transition-opacity ${controls.disableReorg >= 0.5 ? "opacity-30 pointer-events-none" : ""}`}>
-              <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} />
-              <ControlSlider
-                label="Float ms"
-                value={controls.floatDurationMs}
-                onChange={(v) => updateControlAndClearSaved("floatDurationMs", v)}
-                min={200}
-                max={2000}
-                step={50}
-                formatValue={(v) => `${Math.round(v)}ms`}
-              />
+              <ControlSlider label="Delay" value={controls.settleTime} onChange={(v) => updateControlAndClearSaved("settleTime", v)} min={0} max={5} formatValue={(v) => `${v.toFixed(1)}s`} />
               <ControlSlider label="Speed" value={controls.returnSpring} onChange={(v) => updateControlAndClearSaved("returnSpring", v)} min={0.5} max={5} />
               <ControlSlider label="Ease" value={controls.settleDamping} onChange={(v) => updateControlAndClearSaved("settleDamping", v)} min={0} max={2} />
             </div>

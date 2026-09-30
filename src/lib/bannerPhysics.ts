@@ -76,6 +76,7 @@ export interface Controls {
   spring: number;
   damping: number;
   timeScale: number;
+  gravity: number;
   shardSpread: number;
   settleTime: number;
   floatStrength: number;
@@ -123,6 +124,7 @@ export const DEFAULT_CONTROLS: Controls = {
   spring: 1.2,
   damping: 1.5,
   timeScale: 1,
+  gravity: 1.1,
   shardSpread: 0.6,
   settleTime: 1.9,
   floatStrength: LOCKED_REORG_FLOAT_STRENGTH,
