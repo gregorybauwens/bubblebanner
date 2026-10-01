@@ -24,9 +24,9 @@ const MAX_FRAME_MS = 50;
 const MAX_STEPS_PER_FRAME = 12;
 const MATTER_UNITS_PER_S = 60;
 
-const MAX_PIECES = 150;
+const MAX_PIECES = 220;
 const MIN_PIECE_AREA = 6;
-const MIN_SHATTER_AREA = 160;
+const MIN_SHATTER_AREA = 50;
 const WALL_THICKNESS = 600;
 // Faster pieces can tunnel through the thinnest shapes (19 units wide at a 120 Hz step).
 const MAX_SPEED = 1800;
@@ -234,12 +234,14 @@ export class ShatterEngine {
     return null;
   }
 
-  /** Pieces within `radius` of the point, pieces under the point first, then topmost first. */
+  /** Pieces within `radius` of the point: pieces under the point first (topmost first), then nearest first. */
   queryPieces(point: Vec, radius: number): string[] {
+    if (this.reassembling) return [];
     const list = [...this.pieces.values()].reverse();
     const direct: string[] = [];
-    const near: string[] = [];
+    const near: { id: string; distance: number }[] = [];
     for (const piece of list) {
+      if (piece.mode !== 'physics') continue;
       const vertices = piece.body.vertices;
       if (Matter.Vertices.contains(vertices, point)) {
         direct.push(piece.id);
@@ -249,20 +251,22 @@ export class ShatterEngine {
       for (let i = 0; i < vertices.length; i++) {
         min = Math.min(min, distanceToSegment(point, vertices[i], vertices[(i + 1) % vertices.length]));
       }
-      if (min <= radius) near.push(piece.id);
+      if (min <= radius) near.push({ id: piece.id, distance: min });
     }
-    return direct.concat(near);
+    near.sort((a, b) => a.distance - b.distance);
+    return direct.concat(near.map((n) => n.id));
   }
 
   shatterShape(shapeId: string, impact: Vec, offset: Vec, scale: number) {
     const shape = this.shapes.get(shapeId);
     if (!shape || this.shattered.has(shapeId)) return false;
-    const budget = MAX_PIECES - this.pieces.size;
-    if (budget < 2) return false;
 
     const area = polygonArea(shape.outline);
     const areaRatio = area / (this.viewBox.width * this.viewBox.height);
-    const count = clamp(Math.round((5 + areaRatio * 22) * scale), 2, Math.min(16, budget));
+    const wanted = clamp(Math.round((5 + areaRatio * 22) * scale), 2, 16);
+    const budget = this.makeRoom(wanted);
+    if (budget < 2) return false;
+    const count = Math.min(wanted, budget);
     const impactHome = { x: impact.x - offset.x, y: impact.y - offset.y };
     const polys = voronoiShatter(shape.outline, { count, impact: impactHome });
 
@@ -284,14 +288,14 @@ export class ShatterEngine {
   shatterPiece(pieceId: string, impact: Vec, scale: number) {
     const piece = this.pieces.get(pieceId);
     if (!piece || piece.mode !== 'physics') return false;
-    const budget = MAX_PIECES - this.pieces.size + 1;
-    if (piece.area < MIN_SHATTER_AREA || budget < 2) {
+    const wanted = clamp(Math.round((2 + Math.sqrt(piece.area) / 45) * scale), 2, 7);
+    const budget = piece.area < MIN_SHATTER_AREA ? 0 : this.makeRoom(wanted - 1, piece) + 1;
+    if (budget < 2) {
       this.poke(piece, impact, scale);
       this.startLoop();
       return true;
     }
-
-    const count = clamp(Math.round((2 + Math.sqrt(piece.area) / 45) * scale), 2, Math.min(7, budget));
+    const count = Math.min(wanted, budget);
     const { position, angle } = piece.body;
     const homePoly = piece.local.map((p) => ({ x: p.x + piece.home.x, y: p.y + piece.home.y }));
     const localImpact = rotate({ x: impact.x - position.x, y: impact.y - position.y }, -angle);
@@ -534,6 +538,19 @@ export class ShatterEngine {
     Matter.Composite.remove(this.engine.world, piece.body);
     this.pieces.delete(piece.id);
     this.dirty = true;
+  }
+
+  /** Frees space for `needed` new pieces by clearing the smallest pieces; returns the resulting budget. */
+  private makeRoom(needed: number, keep?: Piece) {
+    const excess = this.pieces.size + needed - MAX_PIECES;
+    if (excess > 0) {
+      [...this.pieces.values()]
+        .filter((p) => p !== keep && p.mode === 'physics' && p !== this.drag?.piece)
+        .sort((a, b) => a.area - b.area)
+        .slice(0, excess)
+        .forEach((p) => this.removePiece(p));
+    }
+    return MAX_PIECES - this.pieces.size;
   }
 
   private afterShatter(created: (Piece | null)[], impact: Vec) {

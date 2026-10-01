@@ -25,18 +25,19 @@ import {
   BURST_WINDOW_S,
   MAX_BURST_CLICKS,
 } from '@/lib/bannerPhysics';
-import { shapeOutline } from '@/lib/shatterGeometry';
+import { pointInPolygon, shapeOutline } from '@/lib/shatterGeometry';
 import { ShatterEngine, type EngineSettings, type EngineShape, type PieceView } from '@/lib/shatterEngine';
 
 export const DEFAULT_CONTROLS: Controls = {
   ...BASE_DEFAULT_CONTROLS,
-  hoverStrength: 0.2,
+  hoverStrength: 1,
   spring: 0.9,
   damping: 0.5,
-  shardSpread: 0.5,
+  shardSpread: 1.4,
   explosionForce: 1.5,
   gravity: 0.7,
-  settleTime: 3,
+  settleTime: 3.7,
+  disableReorg: 1,
 };
 
 export { DEFAULT_COLOR_STOPS };
@@ -61,6 +62,12 @@ const STARTER_SVG = `<svg width="1440" height="380" viewBox="0 0 1440 380" fill=
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 const DRAG_THRESHOLD_PX = 6;
 const PROGRAMMATIC_STAGGER_MS = 60;
+
+// The cursor image never changes: swapping it at runtime makes browsers flash
+// the fallback cursor while the new image decodes.
+const CURSOR_RADIUS_PX = 12;
+const CURSOR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="${CURSOR_RADIUS_PX}" fill="rgba(255,255,255,0.22)" stroke="#E6E6E6" stroke-width="1.5"/></svg>`;
+const CUSTOM_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(CURSOR_SVG)}") 14 14, crosshair`;
 
 // Intro entrance — Editorial glide. Overdamped spring + tight rest thresholds so
 // shapes arrive clean with no subpixel tail. Opacity fades up on its own tween so
@@ -521,9 +528,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     if (includeNow) recent.push(now);
     clickBurstRef.current = recent;
     const burstClicks = Math.min(recent.length, MAX_BURST_CLICKS);
-    const burstFactor = clamp(1 + Math.max(0, burstClicks - 1) * 0.425, 1, 3.825);
-    const cursorScale = clamp(1 + (burstFactor - 1) * 0.35, 1, 1.3);
-    return { burstFactor, cursorScale };
+    return clamp(1 + Math.max(0, burstClicks - 1) * 0.425, 1, 3.825);
   };
 
   const getPressureFactor = (event: React.PointerEvent) => {
@@ -543,40 +548,37 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     };
   };
 
+  /** Breaks exactly one target: the piece or shape under the pointer, else the nearest one within `radius`. */
   const shatterAt = (point: { x: number; y: number }, radius: number, scale: number, pressedPieceId?: string) => {
     const engine = engineRef.current;
     if (!engine) return;
-    const maxTargets = 4;
-    const pieceIds = engine.queryPieces(point, radius).filter((id) => id !== pressedPieceId);
-    if (pressedPieceId) pieceIds.unshift(pressedPieceId);
+    const pieceIds = engine.queryPieces(point, radius);
+    const directPiece = pressedPieceId ?? engine.pieceAt(point);
+    if (directPiece && engine.shatterPiece(directPiece, point, scale)) return;
 
-    const shapeIds: string[] = [];
+    const outlines = new Map(engineShapes.map((s) => [s.id, s.outline]));
+    let nearestShape: { id: string; distance: number } | null = null;
     for (let i = shapes.length - 1; i >= 0; i--) {
       const shape = shapes[i];
       if (shatteredIds.has(shape.id)) continue;
       const offset = shapeTransforms.get(shape.id) ?? { x: 0, y: 0 };
+      const outline = outlines.get(shape.id);
+      if (outline && pointInPolygon({ x: point.x - offset.x, y: point.y - offset.y }, outline)) {
+        engine.shatterShape(shape.id, point, offset, scale);
+        return;
+      }
       const b = shape.bounds;
       const closestX = clamp(point.x, b.x + offset.x, b.x + offset.x + b.width);
       const closestY = clamp(point.y, b.y + offset.y, b.y + offset.y + b.height);
-      if (distance(point.x, point.y, closestX, closestY) <= radius) shapeIds.push(shape.id);
+      const d = distance(point.x, point.y, closestX, closestY);
+      if (d <= radius && (!nearestShape || d < nearestShape.distance)) nearestShape = { id: shape.id, distance: d };
     }
 
-    pieceIds.slice(0, maxTargets).forEach((id) => engine.shatterPiece(id, point, scale));
-    shapeIds.slice(0, Math.max(0, maxTargets - pieceIds.length)).forEach((id) => {
-      engine.shatterShape(id, point, shapeTransforms.get(id) ?? { x: 0, y: 0 }, scale);
-    });
-  };
-
-  const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
-  const cursorSize = Math.round(58 * cursorScale);
-  const cursorHotspot = Math.round(cursorSize / 2);
-  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 58 58"><circle cx="29" cy="29" r="28" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
-  const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
-  const customCursorRef = useRef(customCursor);
-  customCursorRef.current = customCursor;
-
-  const setCursor = (cursor: string) => {
-    if (containerRef.current) containerRef.current.style.cursor = cursor;
+    const nearPiece = pieceIds.find((id) => id !== directPiece);
+    if (nearPiece && engine.shatterPiece(nearPiece, point, scale)) return;
+    if (nearestShape) {
+      engine.shatterShape(nearestShape.id, point, shapeTransforms.get(nearestShape.id) ?? { x: 0, y: 0 }, scale);
+    }
   };
 
   const releaseCapture = (pointerId: number) => {
@@ -593,10 +595,12 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     markInteraction();
 
     const { rect, point } = toViewBoxPoint(e.clientX, e.clientY);
-    const { burstFactor, cursorScale: pressScale } = getBurstMetrics(performance.now() / 1000, true);
+    const burstFactor = getBurstMetrics(performance.now() / 1000, true);
     const scale = clamp(burstFactor * getPressureFactor(e), 0.85, 2.4);
-    const radiusPx = 29 * pressScale;
-    const radius = Math.max((radiusPx / rect.width) * viewBox.width, (radiusPx / rect.height) * viewBox.height);
+    const radius = Math.max(
+      (CURSOR_RADIUS_PX / rect.width) * viewBox.width,
+      (CURSOR_RADIUS_PX / rect.height) * viewBox.height
+    );
 
     if (engine.isReassembling()) engine.cancelReassembly();
 
@@ -630,7 +634,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         pendingRef.current = null;
         if (engine.beginDrag(pending.pieceId, point, e.timeStamp)) {
           draggingRef.current = true;
-          setCursor('grabbing');
         }
       }
       return;
@@ -644,8 +647,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       x: (e.clientX - rect.left) / rect.width,
       y: (e.clientY - rect.top) / rect.height,
     });
-    const overPiece = !prefersReducedMotion && e.pointerType !== 'touch' && engine.pieceAt(point) !== null;
-    setCursor(overPiece ? 'grab' : customCursorRef.current);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -659,7 +660,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
       draggingRef.current = false;
       releaseCapture(e.pointerId);
       engine?.endDrag(e.timeStamp);
-      setCursor('grab');
     }
     scheduleAutoRebuild();
   };
@@ -677,7 +677,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const handlePointerLeave = () => {
     if (draggingRef.current || pendingRef.current) return;
     setPointer(null);
-    setCursor(customCursorRef.current);
   };
 
   const handleReset = useCallback(() => {
@@ -754,7 +753,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         style={{
           ...(fillViewport ? { height: '100vh' } : { aspectRatio: `${viewBox.width} / ${viewBox.height}` }),
           background: 'transparent',
-          cursor: customCursor,
+          cursor: CUSTOM_CURSOR,
           touchAction: hasPieces ? 'none' : 'manipulation',
         }}
         onPointerDown={handlePointerDown}
