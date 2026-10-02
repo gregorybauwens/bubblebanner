@@ -1,40 +1,89 @@
 /**
- * Paste into Framer: Site Settings → Custom Code → End of <body>
+ * Framer: Site Settings → Custom Code → End of <body>
  *   <script src="https://bubblebanner.vercel.app/framer-cursor-bridge.js"></script>
  *
- * Keeps Framer's custom cursor moving while the pointer is over the
- * bubblebanner iframe.
+ * Then Publish the site (the editor canvas does not run this script).
+ *
+ * Makes bubblebanner iframes ignore the pointer so Framer keeps receiving
+ * real mouse events (and its custom cursor keeps moving). Clicks and
+ * drags are forwarded into the iframe.
  */
 (function () {
   if (window.__bbCursorBridge) return;
   window.__bbCursorBridge = true;
 
-  window.addEventListener('message', function (event) {
-    var data = event.data;
-    if (!data || data.__bubblebanner !== 1 || data.type !== 'pointer') return;
+  function bannerFrames() {
+    return Array.prototype.filter.call(document.getElementsByTagName('iframe'), function (frame) {
+      return /bubblebanner\.vercel\.app/i.test(frame.src || '');
+    });
+  }
 
-    var frames = document.getElementsByTagName('iframe');
-    var iframe = null;
+  function frameAt(x, y) {
+    var frames = bannerFrames();
     for (var i = 0; i < frames.length; i++) {
-      if (frames[i].contentWindow === event.source) {
-        iframe = frames[i];
-        break;
+      var rect = frames[i].getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        return frames[i];
       }
     }
-    if (!iframe) return;
+    return null;
+  }
 
-    var rect = iframe.getBoundingClientRect();
-    var x = rect.left + data.x;
-    var y = rect.top + data.y;
-    var opts = {
-      bubbles: true,
-      cancelable: true,
-      clientX: x,
-      clientY: y,
-      view: window,
-    };
+  function punchThrough() {
+    bannerFrames().forEach(function (frame) {
+      frame.style.setProperty('pointer-events', 'none', 'important');
+    });
+  }
 
-    window.dispatchEvent(new PointerEvent('pointermove', opts));
-    window.dispatchEvent(new MouseEvent('mousemove', opts));
-  });
+  function send(frame, type, event) {
+    if (!frame || !frame.contentWindow) return;
+    var rect = frame.getBoundingClientRect();
+    frame.contentWindow.postMessage(
+      {
+        __bubblebanner: 1,
+        type: 'input',
+        event: type,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        button: event.button,
+        buttons: event.buttons,
+      },
+      '*'
+    );
+  }
+
+  var active = null;
+
+  function onMove(event) {
+    if (!event.isTrusted) return;
+    punchThrough();
+    var frame = frameAt(event.clientX, event.clientY);
+    if (active && active !== frame) send(active, 'pointerleave', event);
+    if (frame) send(frame, 'pointermove', event);
+    active = frame;
+  }
+
+  function onDown(event) {
+    if (!event.isTrusted) return;
+    var frame = frameAt(event.clientX, event.clientY);
+    if (!frame) return;
+    active = frame;
+    send(frame, 'pointerdown', event);
+  }
+
+  function onUp(event) {
+    if (!event.isTrusted) return;
+    if (active) send(active, 'pointerup', event);
+  }
+
+  function onCancel(event) {
+    if (active) send(active, 'pointercancel', event);
+  }
+
+  window.addEventListener('pointermove', onMove, true);
+  window.addEventListener('pointerdown', onDown, true);
+  window.addEventListener('pointerup', onUp, true);
+  window.addEventListener('pointercancel', onCancel, true);
+  setInterval(punchThrough, 1000);
+  punchThrough();
 })();

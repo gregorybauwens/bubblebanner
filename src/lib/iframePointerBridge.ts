@@ -1,39 +1,38 @@
 /**
- * When the banner is iframed (Framer, portfolio), the parent page loses
- * pointer events and its custom cursor freezes at the iframe edge.
- *
- * This hides the iframe's own cursor and streams pointer coordinates to
- * the parent. Pair with public/framer-cursor-bridge.js on the Framer site.
+ * When iframed on Framer, the parent script (public/framer-cursor-bridge.js)
+ * sets pointer-events: none on the iframe so Framer's cursor keeps moving.
+ * This file applies incoming pointer events from that parent.
  */
 
 const MESSAGE_KEY = '__bubblebanner';
 
+const dispatch = (type: string, x: number, y: number, button = 0, buttons = 0) => {
+  const target = document.elementFromPoint(x, y) || document.body;
+  const event = new PointerEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    pointerId: 1,
+    pointerType: 'mouse',
+    isPrimary: true,
+    button,
+    buttons,
+    view: window,
+  });
+  target.dispatchEvent(event);
+};
+
 export const startIframePointerBridge = () => {
   if (typeof window === 'undefined' || window.parent === window) return () => {};
 
-  document.documentElement.classList.add('bb-in-iframe');
-  const style = document.createElement('style');
-  style.textContent =
-    'html.bb-in-iframe, html.bb-in-iframe body, html.bb-in-iframe * { cursor: none !important; }';
-  document.head.appendChild(style);
-
-  const send = (type: 'pointer' | 'leave', event: PointerEvent) => {
-    window.parent.postMessage(
-      { [MESSAGE_KEY]: 1, type, x: event.clientX, y: event.clientY },
-      '*'
-    );
+  const onMessage = (event: MessageEvent) => {
+    const data = event.data;
+    if (!data || data[MESSAGE_KEY] !== 1 || data.type !== 'input') return;
+    if (typeof data.x !== 'number' || typeof data.y !== 'number') return;
+    dispatch(data.event, data.x, data.y, data.button ?? 0, data.buttons ?? 0);
   };
 
-  const onMove = (event: PointerEvent) => send('pointer', event);
-  const onLeave = (event: PointerEvent) => send('leave', event);
-
-  window.addEventListener('pointermove', onMove, { passive: true });
-  window.addEventListener('pointerleave', onLeave, { passive: true });
-
-  return () => {
-    document.documentElement.classList.remove('bb-in-iframe');
-    style.remove();
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerleave', onLeave);
-  };
+  window.addEventListener('message', onMessage);
+  return () => window.removeEventListener('message', onMessage);
 };
