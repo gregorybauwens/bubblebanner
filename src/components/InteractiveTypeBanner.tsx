@@ -866,12 +866,6 @@ const InteractiveTypeBanner: React.FC<InteractiveTypeBannerProps> = ({
     } catch { /* ignore */ }
   }, [controls, persistControls]);
 
-  const { cursorScale } = getBurstMetrics(performance.now() / 1000, false);
-  const cursorSize = Math.round(58 * cursorScale);
-  const cursorHotspot = Math.round(cursorSize / 2);
-  const cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 58 58"><circle cx="29" cy="29" r="28" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/></svg>`;
-  const customCursor = `url("data:image/svg+xml,${encodeURIComponent(cursorSvg)}") ${cursorHotspot} ${cursorHotspot}, crosshair`;
-
   const resetProgress = presetState.returnMode === 'original'
     ? clamp((presetState.clickTime - presetState.returnStartTime) / 0.25, 0, 1)
     : 0;
@@ -886,7 +880,6 @@ const InteractiveTypeBanner: React.FC<InteractiveTypeBannerProps> = ({
         style={{
           aspectRatio: `${viewBox.width} / ${viewBox.height}`,
           background: 'transparent',
-          cursor: customCursor,
           userSelect: 'none',
           WebkitUserSelect: 'none',
         }}

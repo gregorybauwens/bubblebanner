@@ -62,12 +62,7 @@ const STARTER_SVG = `<svg width="1440" height="380" viewBox="0 0 1440 380" fill=
 const CONTROLS_STORAGE_KEY = 'bubblebanner.controls.v3';
 const DRAG_THRESHOLD_PX = 6;
 const PROGRAMMATIC_STAGGER_MS = 60;
-
-// The cursor image never changes: swapping it at runtime makes browsers flash
-// the fallback cursor while the new image decodes.
-const CURSOR_RADIUS_PX = 12;
-const CURSOR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="${CURSOR_RADIUS_PX}" fill="rgba(255,255,255,0.22)" stroke="#E6E6E6" stroke-width="1.5"/></svg>`;
-const CUSTOM_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(CURSOR_SVG)}") 14 14, crosshair`;
+const HIT_RADIUS_PX = 12;
 
 // Intro entrance — Editorial glide. Overdamped spring + tight rest thresholds so
 // shapes arrive clean with no subpixel tail. Opacity fades up on its own tween so
@@ -598,8 +593,8 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     const burstFactor = getBurstMetrics(performance.now() / 1000, true);
     const scale = clamp(burstFactor * getPressureFactor(e), 0.85, 2.4);
     const radius = Math.max(
-      (CURSOR_RADIUS_PX / rect.width) * viewBox.width,
-      (CURSOR_RADIUS_PX / rect.height) * viewBox.height
+      (HIT_RADIUS_PX / rect.width) * viewBox.width,
+      (HIT_RADIUS_PX / rect.height) * viewBox.height
     );
 
     if (engine.isReassembling()) engine.cancelReassembly();
@@ -753,7 +748,6 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
         style={{
           ...(fillViewport ? { height: '100vh' } : { aspectRatio: `${viewBox.width} / ${viewBox.height}` }),
           background: 'transparent',
-          cursor: CUSTOM_CURSOR,
           touchAction: hasPieces ? 'none' : 'manipulation',
         }}
         onPointerDown={handlePointerDown}
