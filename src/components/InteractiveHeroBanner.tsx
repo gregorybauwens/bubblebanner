@@ -308,7 +308,7 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
   const introJiggleRanRef = useRef(false);
 
   // Parse SVG
-  const { shapes, viewBox } = useMemo(() => {
+  const { shapes, viewBox: parsedViewBox } = useMemo(() => {
     const parsed = parseSVG(svgMarkup);
     const stops = colorStops && colorStops.length > 0 ? colorStops : DEFAULT_COLOR_STOPS;
     if (svgMarkup === STARTER_SVG && parsed.shapes.length > 0) {
@@ -329,6 +329,15 @@ const InteractiveHeroBanner: React.FC<InteractiveHeroBannerProps> = ({
     }
     return parsed;
   }, [svgMarkup, colorStops]);
+
+  // Keyed on the values, not the parsed object, so markup that only moves shapes
+  // (the grid embeds on resize) updates colliders in place instead of rebuilding
+  // the engine and dropping any pieces in flight.
+  const { x: vbX, y: vbY, width: vbWidth, height: vbHeight } = parsedViewBox;
+  const viewBox = useMemo<ViewBox>(
+    () => ({ x: vbX, y: vbY, width: vbWidth, height: vbHeight }),
+    [vbX, vbY, vbWidth, vbHeight]
+  );
 
   const engineShapes = useMemo<EngineShape[]>(
     () => shapes.map((shape) => ({ id: shape.id, outline: shapeOutline(shape), fill: shape.fill || '#ECB300' })),
